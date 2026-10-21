@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+.turbo/
+.wrangler/
+coverage/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+.dev.vars
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.obsidian/workspace*.json
