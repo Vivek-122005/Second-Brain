@@ -1,0 +1,8 @@
+{
+  "extends": "../config/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2023", "WebWorker"]
+  },
+  "include": ["src", "test"]
+}
