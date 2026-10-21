@@ -21,12 +21,15 @@ describe('brain (top level)', () => {
     env = await makeEnv();
     expect(await env.run('help')).toBe(0);
     expect(env.stdout()).toMatch(/Commands/);
+    expect(env.stdout()).toMatch(/connect/);
     expect(await env.run('--help')).toBe(0);
     expect(await env.run()).toBe(2);
   });
 
   it('shows per-command help', async () => {
     env = await makeEnv();
+    expect(await env.run('help', 'connect')).toBe(0);
+    expect(env.stdout()).toMatch(/--dry-run/);
     expect(await env.run('login', '--help')).toBe(0);
     expect(env.stdout()).toMatch(/--machine <name>/);
   });
@@ -36,8 +39,8 @@ describe('brain (top level)', () => {
     expect(await env.run('logn')).toBe(2);
     expect(env.stderr()).toMatch(/Did you mean `brain login`/);
     expect(await env.run('status', '--bogus')).toBe(2);
-    expect(await env.run('status', '--machine', 'x')).toBe(2);
-    expect(env.stderr()).toMatch(/does not take --machine/);
+    expect(await env.run('status', '--dry-run')).toBe(2);
+    expect(env.stderr()).toMatch(/does not take --dry-run/);
     expect(await env.run('keys', 'extra')).toBe(2);
   });
 });

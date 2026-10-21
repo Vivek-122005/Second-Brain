@@ -1,4 +1,6 @@
 import { parseArgs } from 'node:util';
+import { CLIENT_IDS, isClientId } from './clients';
+import { connect } from './commands/connect';
 import { keys } from './commands/keys';
 import { login } from './commands/login';
 import { logout } from './commands/logout';
@@ -12,6 +14,10 @@ const OPTIONS = {
   api: { type: 'string' },
   client: { type: 'string' },
   machine: { type: 'string' },
+  config: { type: 'string' },
+  'dry-run': { type: 'boolean' },
+  'show-secret': { type: 'boolean' },
+  'reuse-key': { type: 'boolean' },
   'no-browser': { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
   version: { type: 'boolean', short: 'v' },
@@ -49,6 +55,23 @@ const COMMANDS: Record<string, CommandSpec> = {
     usage: 'brain status [--api <url>]',
     options: ['api'],
   },
+  connect: {
+    summary: `Configure an assistant to use Second Brain over MCP`,
+    usage: `brain connect <${CLIENT_IDS.join(' | ')}> [--dry-run] [--reuse-key] [--config <file>] [--show-secret]`,
+    options: ['api', 'machine', 'config', 'dry-run', 'show-secret', 'reuse-key'],
+    details: [
+      'Each assistant gets its own API key (labelled "<client> on <machine>"), so it can be',
+      'revoked on its own. Existing MCP servers in the config file are kept, and the original',
+      'file is copied to <file>.bak before the first change.',
+      '',
+      'Options:',
+      '  --dry-run          Show what would change; write nothing and create no key',
+      '  --reuse-key        Use this machine’s login key instead of creating a new one',
+      '  --config <file>    Write to this config file instead of the default location',
+      '  --show-secret      When a snippet must be pasted by hand, include the real key',
+      '  --machine <name>   Machine name for the new key label (default: login machine)',
+    ].join('\n'),
+  },
   keys: {
     summary: 'List your API keys',
     usage: 'brain keys [--api <url>]',
@@ -75,7 +98,8 @@ function mainHelp(out: Output): void {
   out.line();
   out.line(c.bold('Examples'));
   out.line('  brain login --api https://brain.example.com');
-  out.line('  brain status');
+  out.line('  brain connect claude-code');
+  out.line('  brain connect cursor --dry-run');
   out.line();
   out.line(c.dim('Run `brain help <command>` for details. Docs: packages/cli/README.md'));
 }
@@ -154,7 +178,7 @@ async function dispatch(argv: string[], ctx: Ctx, out: Output): Promise<number> 
       throw new UsageError(`\`brain ${command}\` does not take --${key}.`, `Usage: ${spec.usage}`);
     }
   }
-  const maxPositionals = 0;
+  const maxPositionals = command === 'connect' ? 1 : 0;
   if (rest.length > maxPositionals) {
     throw new UsageError(`Unexpected argument "${rest[maxPositionals]}".`, `Usage: ${spec.usage}`);
   }
@@ -177,6 +201,27 @@ async function dispatch(argv: string[], ctx: Ctx, out: Output): Promise<number> 
     case 'keys':
       await keys(ctx, out, { api: values.api });
       break;
+    case 'connect': {
+      const client = rest[0];
+      if (!client) {
+        throw new UsageError('Which assistant?', `Usage: ${spec.usage}`);
+      }
+      if (!isClientId(client)) {
+        throw new UsageError(
+          `Unknown assistant "${client}".`,
+          `Supported: ${CLIENT_IDS.join(', ')}.`,
+        );
+      }
+      await connect(ctx, out, client, {
+        api: values.api,
+        dryRun: Boolean(values['dry-run']),
+        showSecret: Boolean(values['show-secret']),
+        reuseKey: Boolean(values['reuse-key']),
+        config: values.config,
+        machine: values.machine,
+      });
+      break;
+    }
   }
   return ExitCode.Ok;
 }
