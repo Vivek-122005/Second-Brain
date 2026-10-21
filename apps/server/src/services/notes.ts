@@ -1,4 +1,11 @@
-import { normalizeVaultPath, redactSecrets, sha256Hex, truncateToTokens } from '@second-brain/core';
+import {
+  isHeadingAtMost,
+  normalizeVaultPath,
+  parseHeading,
+  redactSecrets,
+  sha256Hex,
+  truncateToTokens,
+} from '@second-brain/core';
 import { applyChanges, getBacklinks, getNote, getOutgoingLinks, safeJson } from '@second-brain/db';
 import type { ImportResponse, NoteDetail, NoteType, ReadOutput } from '@second-brain/schema';
 import type { Principal } from '../auth/principal';
@@ -83,18 +90,17 @@ export function extractSection(body: string, section: string): string | null {
   let start = -1;
   let level = 0;
   for (let i = 0; i < lines.length; i++) {
-    const m = /^(#{1,6})[ \t]+(.+?)[ \t#]*$/.exec(lines[i] ?? '');
-    if (m && (m[2] ?? '').trim().toLowerCase() === want) {
+    const h = parseHeading(lines[i] ?? '');
+    if (h && h.text.toLowerCase() === want) {
       start = i;
-      level = (m[1] ?? '#').length;
+      level = h.level;
       break;
     }
   }
   if (start < 0) return null;
   let end = lines.length;
   for (let i = start + 1; i < lines.length; i++) {
-    const m = /^(#{1,6})[ \t]/.exec(lines[i] ?? '');
-    if (m && (m[1] ?? '#').length <= level) {
+    if (isHeadingAtMost(lines[i] ?? '', level)) {
       end = i;
       break;
     }
