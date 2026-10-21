@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { NoteType, ProjectStatus } from './notes';
-import type { CheckOutput, ProjectSummary, SearchHit } from './tools';
+import type { CheckOutput, ProjectSummary, SearchHit, SemanticStatus } from './tools';
 
 /**
  * REST API contract (`/api/v1`, LLD §6). Request bodies are Zod schemas (validated by the server);
@@ -48,7 +48,12 @@ export interface SpaceSummary {
   kind: 'personal' | 'team';
   role: 'owner' | 'admin' | 'editor' | 'viewer';
   vault: { provider: 'managed' | 'github'; repo: string | null };
+  /** Semantic (hybrid) search is on for this space (ADR-0004). */
+  semantic_enabled?: boolean;
 }
+/** PATCH /api/v1/spaces/:id (space owner only) → `SpaceSummary`. Enabling semantic search starts a backfill. */
+export const UpdateSpaceRequest = z.strictObject({ semantic_enabled: z.boolean() });
+export type UpdateSpaceRequest = z.infer<typeof UpdateSpaceRequest>;
 /** GET /api/v1/me */
 export interface MeResponse {
   user: User;
@@ -182,10 +187,12 @@ export interface SaveNoteResponse {
   commit_sha: string;
 }
 
-/** GET /api/v1/search?q=&types=topic,project&project=&limit= */
+/** GET /api/v1/search?q=&types=topic,project&project=&limit=&mode=hybrid|keyword */
 export interface SearchResponse {
   hits: SearchHit[];
+  /** The mode that actually ran: `hybrid` only when semantic results were fused. */
   mode: 'keyword' | 'hybrid';
+  semantic: SemanticStatus;
 }
 
 /** GET /api/v1/projects?status= */
