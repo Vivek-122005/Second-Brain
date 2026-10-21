@@ -1,0 +1,11 @@
+# Gitleaks configuration: the default rules, plus an allowlist for test files.
+# Tests for the secret redactor and the CLI need realistic fake credentials. Only files under a
+# package's test/ folder are exempt; real code and docs are still scanned with every rule.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fake credentials used by redaction and CLI tests"
+paths = [
+  '''^(apps|packages)/[^/]+/test/.*\.ts$''',
+]
