@@ -1,0 +1,6 @@
+# Copy to .dev.vars for local development (gitignored). Never commit real values.
+# Generate each with: openssl rand -base64 32
+KEY_PEPPER=change-me-local-pepper
+VAULT_KEK=
+# Optional: send real magic-link emails through Resend.
+RESEND_API_KEY=

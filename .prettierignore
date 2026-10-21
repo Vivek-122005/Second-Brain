@@ -6,3 +6,4 @@ coverage
 .wrangler
 *.md
 .github/ISSUE_TEMPLATE
+.claude

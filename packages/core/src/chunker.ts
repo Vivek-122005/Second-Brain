@@ -1,3 +1,4 @@
+import { parseHeading } from './headings';
 import { countWords, estimateTokens } from './tokens';
 
 export interface Chunk {
@@ -17,7 +18,6 @@ export interface ChunkOptions {
   maxChars?: number;
 }
 
-const HEADING = /^(#{1,6})[ \t]+(.+?)[ \t#]*$/;
 const FENCE = /^\s*(```|~~~)/;
 
 interface Section {
@@ -66,11 +66,11 @@ function splitSections(body: string): Section[] {
       sections[sections.length - 1]?.lines.push(line);
       continue;
     }
-    const h = inFence === null ? HEADING.exec(line) : null;
+    const h = inFence === null ? parseHeading(line) : null;
     if (h) {
-      const level = (h[1] ?? '#').length;
+      const level = h.level;
       while (stack.length && (stack[stack.length - 1]?.level ?? 0) >= level) stack.pop();
-      stack.push({ level, text: (h[2] ?? '').trim() });
+      stack.push({ level, text: h.text });
       sections.push({ headingPath: stack.map((s) => s.text), lines: [] });
       continue;
     }

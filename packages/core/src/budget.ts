@@ -30,13 +30,14 @@ export function budgetContext(input: ContextOutput, budgetTokens: number): Budge
     active_projects: [...input.active_projects],
   };
 
+  const originalNote = input.note;
   let truncated = false;
   let tokens = measure(data);
   let guard = 10_000;
 
   while (tokens > budgetTokens && guard-- > 0) {
     truncated = true;
-    data.note = TRIM_NOTE;
+    data.note = originalNote ? `${originalNote} ${TRIM_NOTE}` : TRIM_NOTE;
     if (data.sessions.length > 1) data.sessions.pop();
     else if (data.decisions.length > 1) data.decisions.pop();
     else if (data.project?.body) {
@@ -50,6 +51,9 @@ export function budgetContext(input: ContextOutput, budgetTokens: number): Budge
     tokens = measure(data);
   }
 
-  if (!truncated) delete data.note;
+  if (!truncated) {
+    if (originalNote === undefined) delete data.note;
+    else data.note = originalNote;
+  }
   return { data, truncated, tokens };
 }
