@@ -16,7 +16,7 @@ Thanks for helping. The full rules are in [Engineering standards](docs/05-delive
 5. Squash-merge after review.
 
 ## Local development
-Code starts in Phase 1. Setup will live in `docs/runbooks/local-dev.md` (planned): `pnpm install`, `pnpm dev` (Wrangler + Miniflare with local D1/R2/KV), `pnpm test`.
+Setup, everyday commands and troubleshooting: [docs/runbooks/local-dev.md](docs/runbooks/local-dev.md). Run `pnpm check` before pushing; it runs the same gates as CI.
 
 ## Definition of Done
 - Requirements referenced and acceptance criteria met
