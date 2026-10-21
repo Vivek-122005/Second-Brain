@@ -1,0 +1,21 @@
+{
+  "name": "@second-brain/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pure domain logic with no I/O: parsers, chunker, search helpers, redactor, token budget, decisions.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@second-brain/schema": "workspace:*",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@second-brain/config": "workspace:*"
+  }
+}
