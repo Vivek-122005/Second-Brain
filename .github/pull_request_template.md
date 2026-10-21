@@ -17,5 +17,9 @@
 - [ ] Memory returned to agents is in the untrusted envelope
 - [ ] Migration is backward-compatible
 
+## Hygiene
+- [ ] Conventional Commit title (`type(scope): summary`)
+- [ ] `pnpm check` passes locally
+
 ## Docs
 - [ ] README / docs / ADR updated where behaviour changed

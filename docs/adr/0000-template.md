@@ -1,6 +1,6 @@
 # ADR-NNNN: Title
 
-- Status: proposed | accepted | superseded by ADR-NNNN
+- Status: proposed | accepted | superseded by ADR-NNNN (link it)
 - Date: YYYY-MM-DD
 
 ## Context
