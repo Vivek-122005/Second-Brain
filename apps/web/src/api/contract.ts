@@ -37,11 +37,8 @@ import type {
   SpaceSummary as SchemaSpaceSummary,
 } from '@second-brain/schema';
 
-/**
- * Vault provider. The server is renaming `'memory'` to `'managed'` (ADR-0008, "managed vault");
- * accept both until that lands in packages/schema.
- */
-export type VaultProvider = 'managed' | 'github' | 'memory';
+/** Vault provider: `'managed'` (stored by Second Brain, ADR-0008) or `'github'`. */
+export type VaultProvider = SchemaSpaceSummary['vault']['provider'];
 
 export interface SpaceSummary extends Omit<SchemaSpaceSummary, 'vault'> {
   vault: { provider: VaultProvider; repo: string | null };
