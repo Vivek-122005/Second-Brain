@@ -1,4 +1,5 @@
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { parseHeading } from './headings';
 
 export interface ParsedNote {
   frontmatter: Record<string, unknown>;
@@ -61,8 +62,10 @@ export function noteTitle(
 ): string {
   if (typeof frontmatter.title === 'string' && frontmatter.title.trim())
     return frontmatter.title.trim();
-  const h1 = /^#[ \t]+(.+?)[ \t#]*$/m.exec(body);
-  if (h1?.[1]) return h1[1].trim();
+  for (const line of body.split('\n')) {
+    const h = parseHeading(line);
+    if (h?.level === 1) return h.text;
+  }
   const file = path.split('/').pop() ?? path;
   return file.replace(/\.md$/i, '');
 }
