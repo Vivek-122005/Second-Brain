@@ -1,0 +1,23 @@
+{
+  "name": "@second-brain/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "D1 migrations, the search indexer and read-side queries.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@second-brain/core": "workspace:*",
+    "@second-brain/schema": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.4.6",
+    "@cloudflare/workers-types": "^5.20261021.1",
+    "@second-brain/config": "workspace:*"
+  }
+}

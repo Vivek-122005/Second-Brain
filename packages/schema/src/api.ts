@@ -47,7 +47,7 @@ export interface SpaceSummary {
   name: string;
   kind: 'personal' | 'team';
   role: 'owner' | 'admin' | 'editor' | 'viewer';
-  vault: { provider: 'memory' | 'github'; repo: string | null };
+  vault: { provider: 'managed' | 'github'; repo: string | null };
 }
 /** GET /api/v1/me */
 export interface MeResponse {
@@ -225,4 +225,20 @@ export interface GraphResponse {
 export interface ConnectInfo {
   mcp_url: string;
   api_url: string;
+}
+
+// ── Import ─────────────────────────────────────────────────────────────────
+/** POST /api/v1/import → imports Markdown files (e.g. an Obsidian vault) as one commit. */
+export const ImportRequest = z.object({
+  files: z
+    .array(z.object({ path: z.string().min(1).max(300), content: z.string().max(500_000) }))
+    .min(1)
+    .max(500),
+  message: z.string().max(200).optional(),
+});
+export type ImportRequest = z.infer<typeof ImportRequest>;
+export interface ImportResponse {
+  imported: number;
+  skipped: { path: string; reason: string }[];
+  commit_sha: string | null;
 }

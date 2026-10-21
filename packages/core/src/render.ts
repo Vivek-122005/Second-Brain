@@ -1,5 +1,6 @@
 import type { ProjectStatus, TopicUpdate } from '@second-brain/schema';
 import { parseNote, serializeNote } from './frontmatter';
+import { parseHeading } from './headings';
 
 export interface SessionNoteInput {
   id: string;
@@ -127,10 +128,10 @@ export function patchSection(
   let start = -1;
   let level = 0;
   for (let i = 0; i < lines.length; i++) {
-    const m = /^(#{1,6})[ \t]+(.+?)[ \t#]*$/.exec(lines[i] ?? '');
-    if (m && (m[2] ?? '').trim().toLowerCase() === want) {
+    const h = parseHeading(lines[i] ?? '');
+    if (h && h.text.toLowerCase() === want) {
       start = i;
-      level = (m[1] ?? '#').length;
+      level = h.level;
       break;
     }
   }
@@ -138,8 +139,8 @@ export function patchSection(
 
   let end = lines.length;
   for (let i = start + 1; i < lines.length; i++) {
-    const m = /^(#{1,6})[ \t]/.exec(lines[i] ?? '');
-    if (m && (m[1] ?? '#').length <= level) {
+    const h = parseHeading(lines[i] ?? '');
+    if (h && h.level <= level) {
       end = i;
       break;
     }

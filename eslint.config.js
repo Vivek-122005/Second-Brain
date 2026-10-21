@@ -6,7 +6,14 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/coverage/**', '**/.turbo/**', '**/.wrangler/**', '**/*.d.ts'],
+    ignores: [
+      '.claude/**',
+      '**/dist/**',
+      '**/coverage/**',
+      '**/.turbo/**',
+      '**/.wrangler/**',
+      '**/*.d.ts',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

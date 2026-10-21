@@ -1,4 +1,5 @@
 import type { Decision } from '@second-brain/schema';
+import { isHeadingAtMost, parseHeading } from './headings';
 
 /**
  * Decision logs (LLD §1.2, FR-SES-04). A decision log is a Markdown file with one block per
@@ -15,7 +16,20 @@ import type { Decision } from '@second-brain/schema';
  * in-place edit is flipping a superseded decision's `status` and adding `superseded_by`.
  */
 
-const HEADER = /^##[ \t]+(DEC-\d{4,})[ \t]*(?:·|-|—|:)[ \t]*(.+?)[ \t]*$/;
+const SEPARATORS = ['·', '-', '—', ':'];
+
+/** Parses `## DEC-0042 · Title` without backtracking-prone regexes (see headings.ts). */
+function parseDecisionHeader(line: string): { id: string; title: string } | null {
+  const h = parseHeading(line);
+  if (!h || h.level !== 2) return null;
+  const m = /^DEC-\d{4,}/.exec(h.text);
+  if (!m) return null;
+  const rest = h.text.slice(m[0].length).trimStart();
+  const sep = SEPARATORS.find((s) => rest.startsWith(s));
+  if (!sep) return null;
+  const title = rest.slice(sep.length).trim();
+  return title ? { id: m[0], title } : null;
+}
 const FIELD = /^-[ \t]+([a-z_]+):[ \t]?(.*)$/;
 
 export function formatDecisionId(n: number): string {
@@ -53,15 +67,15 @@ export function parseDecisionLog(body: string): Decision[] {
   };
 
   for (const line of lines) {
-    const h = HEADER.exec(line);
+    const h = parseDecisionHeader(line);
     if (h) {
       flush();
-      current.id = h[1];
-      current.title = h[2];
+      current.id = h.id;
+      current.title = h.title;
       continue;
     }
     if (!current.id) continue;
-    if (/^#{1,2}[ \t]/.test(line)) {
+    if (isHeadingAtMost(line, 2)) {
       flush();
       continue;
     }
@@ -114,11 +128,11 @@ export function appendDecisions(body: string, decisions: Decision[]): string {
  */
 export function markSuperseded(body: string, id: string, byId: string): string | null {
   const lines = body.split('\n');
-  const start = lines.findIndex((l) => HEADER.exec(l)?.[1] === id);
+  const start = lines.findIndex((l) => parseDecisionHeader(l)?.id === id);
   if (start < 0) return null;
   let end = lines.length;
   for (let i = start + 1; i < lines.length; i++) {
-    if (/^#{1,2}[ \t]/.test(lines[i] ?? '')) {
+    if (isHeadingAtMost(lines[i] ?? '', 2)) {
       end = i;
       break;
     }
