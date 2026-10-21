@@ -10,5 +10,7 @@ Each significant or hard-to-reverse decision is recorded as `NNNN-title.md` (Con
 | [0004](0004-hybrid-search-rrf.md) | Optional semantic search merged with reciprocal rank fusion | Accepted |
 | [0005](0005-mcp-streamable-http-and-scoped-keys.md) | MCP over Streamable HTTP with per-machine scoped keys and OAuth 2.1 | Accepted |
 | [0006](0006-tenant-isolation-strategy.md) | Tenant isolation: row-level now, database-per-org for Business | Accepted |
+| [0007](0007-own-authentication.md) | Build our own authentication (passkeys, Google OIDC, opaque tokens, OAuth 2.1) | Accepted |
+| [0008](0008-v1-runtime-simplifications.md) | v1 runtime choices: managed vault, optimistic concurrency, no queues yet | Accepted |
 
 Template: copy [0000-template.md](0000-template.md).
