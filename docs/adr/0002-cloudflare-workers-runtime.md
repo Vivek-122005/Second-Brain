@@ -1,18 +1,20 @@
-# ADR-0002: Cloudflare Workers as the runtime platform
+# ADR-0002: Cloudflare Workers as the runtime
 
 - Status: accepted
 - Date: 2026-10-21
 
 ## Context
-We need a low-ops, low-cost, globally fast runtime with a database, blob store, queues, cron, vectors and embeddings, usable by one person today and many tenants later.
+The service is called at the start and end of every AI session, from many machines and regions. It must be cheap for a single person (daily driver), cost little to operate, start instantly, and scale to many tenants without ops work.
 
 ## Decision
-Use Cloudflare Workers with D1, R2, KV, Queues, Cron Triggers, Durable Objects, Vectorize and Workers AI. Domain logic stays runtime-agnostic in `packages/core`, and adapters isolate the platform.
+Run the API (MCP + REST + webhooks + queue/cron consumers) as a Cloudflare Worker using Hono and the MCP TypeScript SDK (Streamable HTTP). Use the platform's native services: D1 (index/metadata), R2 (blobs), KV (hot lookups), Queues + Cron (async work), Durable Objects (per-space write serialisation), Vectorize + Workers AI (embeddings).
 
 ## Consequences
-- Millisecond cold starts, near-zero idle cost, one vendor bill, and per-tenant D1 databases are feasible.
-- We have to respect platform limits (CPU time, D1 batch and row sizes, subrequest counts), so we test against them in CI with the Workers vitest pool.
-- There is some vendor lock-in. Mitigated by adapter interfaces and an eventual Node/Postgres/S3 self-host target.
+- ✅ Millisecond cold starts, global edge, near-zero cost at personal scale, no servers to patch.
+- ✅ One platform for compute, storage and the web app's static assets.
+- ⚠️ Platform limits matter (CPU time, D1 statement/batch/row size, subrequest counts): we test against them early in the Workers Vitest pool.
+- ⚠️ Vendor coupling: services depend only on adapter interfaces (`VaultStore`, `Embedder`, repos) so a Node/Postgres/S3 self-host build stays possible.
 
 ## Alternatives considered
-Vercel + Postgres (Neon) + pgvector (strong, but more moving parts and cost at idle). A single VPS (cheap, but we'd own patching, scaling and backups).
+- **Vercel / Node serverless + managed Postgres:** good DX, but more vendors to stitch together for queues, KV, vectors and per-tenant DBs.
+- **Containers on Fly/Render:** always-on cost and more ops for a personal tool.
