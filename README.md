@@ -118,4 +118,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues: see [SECURITY.md](SECUR
 
 ## License
 
-Not decided yet; all rights reserved for now. This needs a decision before the first external contribution or sale (open-core with a commercial licence is the leading option; see [Roadmap § Open decisions](docs/05-delivery/roadmap.md#open-decisions)).
+Second Brain is open source under the [GNU AGPL-3.0](LICENSE). You can use, modify and self-host it freely. If you run a modified version as a network service, you must share your changes under the same licence.

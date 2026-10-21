@@ -41,12 +41,12 @@ Each line is one branch and one pull request into `main` (trunk-based, squash me
 ### Phase 3 to 5
 Scope as in the table above; each item will get its own branch row here when the phase starts.
 
-## Open decisions
+## Decisions log
 
 | # | Decision | Options | Leaning |
 |---|---|---|---|
-| OD-1 | Licence | Proprietary · AGPL + commercial · BSL · MIT core + closed enterprise | Open-core: AGPL core, commercial Business features |
-| OD-2 | Product name / domain | "Second Brain" is generic and hard to trademark | Keep as working name; pick brand before Phase 5 |
-| OD-3 | Auth provider | Build on `@oslojs`/WebAuthn ourselves · Clerk · WorkOS (SSO later) | Own auth for personal; WorkOS for SSO/SCIM in Phase 5 |
+| OD-1 | Licence | Proprietary · AGPL + commercial · BSL · MIT core + closed enterprise | **Decided:** fully open source, AGPL-3.0 |
+| OD-2 | Product name / domain | "Second Brain" is generic and hard to trademark | **Decided:** "Second Brain" (owner may rebrand later) |
+| OD-3 | Auth provider | Build on `@oslojs`/WebAuthn ourselves · Clerk · WorkOS (SSO later) | **Decided:** own auth, no external provider ([ADR-0007](../adr/0007-own-authentication.md)) |
 | OD-4 | Embedding model | Workers AI bge-base · Voyage · OpenAI | Workers AI (no extra vendor), abstracted behind `Embedder` |
-| OD-5 | Vault for non-GitHub users | Require GitHub · managed R2 store from day one | GitHub first; managed store in Phase 5 |
+| OD-5 | Vault for non-GitHub users | Require GitHub · managed R2 store from day one | **Decided:** managed (D1) store by default + GitHub option ([ADR-0008](../adr/0008-v1-runtime-simplifications.md)) |
