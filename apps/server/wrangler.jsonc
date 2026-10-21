@@ -1,0 +1,78 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "second-brain",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // The web app (apps/web) is built to ../web/dist and served by this Worker.
+  // API, MCP and webhook routes run the Worker first; everything else is the SPA.
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/mcp", "/mcp/*", "/webhooks/*", "/health", "/.well-known/*"],
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "second-brain-dev",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "../../packages/db/migrations",
+    },
+  ],
+
+  // Nightly full index rebuild and hygiene (HLD §4.4).
+  "triggers": { "crons": ["17 3 * * *"] },
+
+  "vars": {
+    "ENVIRONMENT": "development",
+    "SIGNUP_MODE": "allowlist",
+    "ALLOWED_EMAILS": "",
+    "APP_ORIGINS": "http://localhost:8787,http://localhost:5173",
+    "EMAIL_FROM": "Second Brain <login@example.com>",
+  },
+
+  "env": {
+    "staging": {
+      "name": "second-brain-staging",
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "SIGNUP_MODE": "allowlist",
+        "ALLOWED_EMAILS": "",
+        "APP_ORIGINS": "",
+        "EMAIL_FROM": "Second Brain <login@example.com>",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "second-brain-staging",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+          "migrations_dir": "../../packages/db/migrations",
+        },
+      ],
+      "triggers": { "crons": ["17 3 * * *"] },
+    },
+    "production": {
+      "name": "second-brain-production",
+      "vars": {
+        "ENVIRONMENT": "production",
+        "SIGNUP_MODE": "allowlist",
+        "ALLOWED_EMAILS": "",
+        "APP_ORIGINS": "",
+        "EMAIL_FROM": "Second Brain <login@example.com>",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "second-brain-production",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+          "migrations_dir": "../../packages/db/migrations",
+        },
+      ],
+      "triggers": { "crons": ["17 3 * * *"] },
+    },
+  },
+}

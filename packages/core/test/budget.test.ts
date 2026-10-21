@@ -65,6 +65,12 @@ describe('budgetContext', () => {
     expect(r.data.decisions).toEqual([]);
   });
 
+  it('keeps a caller-provided note, adding the trim notice when it trims', () => {
+    const input = { ...fixture(), note: 'No project note yet.' };
+    expect(budgetContext(input, 100_000).data.note).toBe('No project note yet.');
+    expect(budgetContext(input, 1200).data.note).toMatch(/^No project note yet\. Trimmed/);
+  });
+
   it('does not mutate the input', () => {
     const input = fixture();
     const copy = structuredClone(input);
