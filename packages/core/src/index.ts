@@ -3,6 +3,7 @@ export * from './chunker';
 export * from './decisions';
 export * from './frontmatter';
 export * from './fts';
+export * from './headings';
 export * from './hygiene';
 export * from './ids';
 export * from './paths';
