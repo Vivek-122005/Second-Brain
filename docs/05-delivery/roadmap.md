@@ -23,7 +23,7 @@ Each line is one branch and one pull request into `main` (trunk-based, squash me
 | 1.2 | `feat/schema-core` | `packages/schema` (Zod frontmatter + MCP tool I/O) and `packages/core`: frontmatter and wikilink parsers, heading-aware chunker, FTS query sanitiser, secret redactor, token budgeter, decision-log parser, RRF. No I/O, fully unit-tested |
 | 1.3 | `feat/db-index` | `packages/db`: D1 migration `0001_init.sql`, principal-scoped repositories, indexer that turns notes into rows (write-new-then-delete-stale) |
 | 1.4 | `feat/server-mcp` | `apps/server`: Hono Worker, `/health`, `/mcp` (Streamable HTTP) with `brain_search` and `brain_read`, bearer-key middleware, fixture vault + seed script |
-| 1.5 | `ci/deploy-staging` | Wrangler environments and a deploy workflow (staging on `main`, production on tag) |
+| 1.5 | `ci/deploy` | Wrangler environments and a deploy workflow (staging on `main`, production on tag) |
 
 > **About `docs/runbooks/local-dev.md`:** it doesn't exist yet. It is a Phase 1 deliverable, written in 1.1 together with the tooling it describes.
 
