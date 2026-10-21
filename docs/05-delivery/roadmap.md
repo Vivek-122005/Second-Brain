@@ -11,16 +11,35 @@ Build order follows the reference design's lesson: **the session ritual delivers
 | **4: Sharing & teams** | Collaborate | Orgs, team spaces, grants with consent, audit log UI, rate limits per tenant, private encrypted sections | 3-person dogfood team for 2 weeks |
 | **5: Business** | Sellable | SSO/SCIM, per-org D1 + residency, BYOK, policies, managed vault backend, billing (Stripe), status page, SOC 2 prep, pen-test | First paying design partner |
 
-## Phase 1 breakdown (next up)
+## Work breakdown
 
-1. Initialise monorepo: pnpm + Turborepo, `packages/config` (tsconfig strict, ESLint, Prettier), Vitest.
-2. `packages/schema`: Zod schemas for frontmatter and tool I/O.
-3. `packages/core`: frontmatter parser, wikilink parser, chunker, FTS query sanitiser (100% unit-tested).
-4. `packages/db`: D1 migrations `0001_init.sql`, tenant-scoped repository.
-5. `apps/server`: Hono app, `/health`, `/mcp` with `brain_search` and `brain_read`, and a bearer-key middleware.
-6. Seed script: index `fixtures/vault/` into local D1.
-7. GitHub Actions: lint → typecheck → test → deploy preview, plus `wrangler deploy --env staging` on main.
-8. Docs: `docs/runbooks/local-dev.md`.
+Each line is one branch and one pull request into `main` (trunk-based, squash merge, CI must be green). Requirement IDs go in the PR description.
+
+### Phase 1: walking skeleton
+
+| # | Branch | Delivers |
+|---|---|---|
+| 1.1 | `chore/monorepo-foundation` | pnpm workspaces + Turborepo, shared tsconfig (strict) / ESLint / Prettier, Vitest, `.nvmrc`, GitHub Actions CI (lint, typecheck, test, build), PR template, CODEOWNERS, Dependabot, and the local setup guide `docs/runbooks/local-dev.md` |
+| 1.2 | `feat/schema-core` | `packages/schema` (Zod frontmatter + MCP tool I/O) and `packages/core`: frontmatter and wikilink parsers, heading-aware chunker, FTS query sanitiser, secret redactor, token budgeter, decision-log parser, RRF. No I/O, fully unit-tested |
+| 1.3 | `feat/db-index` | `packages/db`: D1 migration `0001_init.sql`, principal-scoped repositories, indexer that turns notes into rows (write-new-then-delete-stale) |
+| 1.4 | `feat/server-mcp` | `apps/server`: Hono Worker, `/health`, `/mcp` (Streamable HTTP) with `brain_search` and `brain_read`, bearer-key middleware, fixture vault + seed script |
+| 1.5 | `ci/deploy-staging` | Wrangler environments and a deploy workflow (staging on `main`, production on tag) |
+
+> **About `docs/runbooks/local-dev.md`:** it doesn't exist yet. It is a Phase 1 deliverable, written in 1.1 together with the tooling it describes.
+
+### Phase 2: daily driver
+
+| # | Branch | Delivers |
+|---|---|---|
+| 2.1 | `feat/vault-store` | `VaultStore` interface with an in-memory/local implementation (dev, tests) and a GitHub implementation (Git Trees API, one atomic commit per save, fast-forward only with retry). Starts with a fine-grained personal access token per space; the GitHub App arrives in Phase 3 |
+| 2.2 | `feat/session-ritual` | `brain_context`, `brain_save`, `brain_check`, `brain_projects`, `brain_write`; decision supersession; token budget; untrusted-memory envelope |
+| 2.3 | `feat/sync` | GitHub webhook (HMAC) → queue → re-index changed paths; nightly full rebuild via Cron |
+| 2.4 | `feat/auth-keys` | Users, sign-in (magic link; console delivery in dev), sessions, API keys (HMAC-hashed, scoped, revocable), REST `/api/v1` |
+| 2.5 | `feat/web-app` | React web app (Apple-inspired, minimal): dashboard, notes browser + editor, search, keys & devices |
+| 2.6 | `feat/cli` | `brain login`, `brain connect <client>`, `brain status`; keys in the OS keychain |
+
+### Phase 3 to 5
+Scope as in the table above; each item will get its own branch row here when the phase starts.
 
 ## Open decisions
 

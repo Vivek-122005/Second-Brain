@@ -5,6 +5,9 @@ Source: <https://uchhdnbxbcsd.postplan.dev/> (read 2026-10-21). This is our own 
 ## What it is
 A shared "second brain" that gives AI assistants persistent memory over MCP. A Markdown vault in Git is the source of truth, with a SQLite search index as a rebuildable cache, served from Cloudflare Workers.
 
+## Note on naming
+The reference describes its tools informally ("get context", "save", "check", search and read). The `brain_*` tool names in our docs are our own choice.
+
 ## Key ideas we adopt
 | Idea | Where it lands in our plan |
 |---|---|
