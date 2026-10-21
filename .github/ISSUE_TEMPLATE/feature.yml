@@ -4,10 +4,10 @@ labels: [feature]
 body:
   - type: input
     id: req
-    attributes: { label: Requirement ID(s), placeholder: 'FR-SES-03' }
+    attributes: { label: Requirement ID(s), placeholder: "FR-SES-03" }
   - type: textarea
     id: problem
-    attributes: { label: Problem / user story, description: 'As a <persona>, I want … so that …' }
+    attributes: { label: Problem / user story, description: "As a <persona>, I want … so that …" }
     validations: { required: true }
   - type: textarea
     id: acceptance
