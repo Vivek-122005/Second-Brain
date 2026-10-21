@@ -17,3 +17,4 @@ build/
 .vscode/*
 !.vscode/extensions.json
 .obsidian/workspace*.json
+.claude/worktrees/

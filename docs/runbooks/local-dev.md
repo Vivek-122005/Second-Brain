@@ -32,6 +32,38 @@ pnpm check        # format, lint, typecheck, test: the same gates as CI
 | `pnpm check` | All of the above checks, as CI runs them |
 | `pnpm --filter <package> <script>` | Runs a script in one package, e.g. `pnpm --filter @second-brain/core test` |
 
+## Run the server locally
+
+The API, MCP server and web app are one Cloudflare Worker (`apps/server`), running locally on Miniflare with a local D1 database. No Cloudflare account is needed.
+
+```bash
+cp apps/server/.dev.vars.example apps/server/.dev.vars   # then set KEY_PEPPER to any random string
+pnpm --filter @second-brain/server db:migrate:local      # create the local D1 schema
+pnpm --filter @second-brain/server dev                   # http://localhost:8787
+```
+
+1. **Sign in.** Add your email to `ALLOWED_EMAILS` in `apps/server/wrangler.jsonc` (or set `SIGNUP_MODE` to `open` for local use). Then `POST /api/v1/auth/magic-link`: in development the response contains a `dev_link` to open instead of an email. The web app's sign-in screen shows it as a button.
+2. **Create an API key** in the web app (Keys & Devices), or with the CLI: `brain login --api http://localhost:8787`.
+3. **Load the sample vault** (`fixtures/vault`):
+
+   ```bash
+   SECOND_BRAIN_KEY=sb_live_... pnpm --filter @second-brain/server seed
+   ```
+
+4. **Connect an assistant**, e.g. Claude Code:
+
+   ```bash
+   claude mcp add --transport http second-brain http://localhost:8787/mcp --header "Authorization: Bearer sb_live_..."
+   ```
+
+   or `brain connect claude-code`. Then start a session and ask it to call `brain_context`.
+
+The nightly index rebuild runs on a Cron trigger. To run it locally, start with `wrangler dev --test-scheduled` and open `http://localhost:8787/__scheduled`.
+
+### Tests that use the Workers runtime
+
+`packages/db` and `apps/server` tests run inside workerd with a real D1 (via `@cloudflare/vitest-plugin`), with migrations from `packages/db/migrations` applied in a setup file. They need no network or account.
+
 ## Branches and pull requests
 
 1. Start from an up-to-date `main`: `git switch main && git pull`.
