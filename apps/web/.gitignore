@@ -1,0 +1,2 @@
+# The root .gitignore excludes every .env.* file. This one only holds non-secret dev defaults.
+!.env.development
