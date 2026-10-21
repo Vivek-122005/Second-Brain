@@ -12,3 +12,8 @@ coverage/
 *.tsbuildinfo
 playwright-report/
 test-results/
+build/
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.obsidian/workspace*.json

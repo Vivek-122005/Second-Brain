@@ -1,8 +1,10 @@
 # Default owner for everything
-* @Vivek-122005
+*                                   @Vivek-122005
 
-# Security-sensitive areas need explicit owner review (see docs/03-security/security.md §6)
-/apps/server/src/middleware/ @Vivek-122005
-/packages/core/src/redactor* @Vivek-122005
-/packages/db/migrations/ @Vivek-122005
-/.github/workflows/ @Vivek-122005
+# Security-sensitive areas need explicit owner review (docs/03-security/security.md §6)
+/docs/adr/                          @Vivek-122005
+/docs/03-security/                  @Vivek-122005
+/apps/server/src/middleware/        @Vivek-122005
+/packages/core/src/redactor*        @Vivek-122005
+/packages/db/migrations/            @Vivek-122005
+/.github/workflows/                 @Vivek-122005

@@ -1,16 +1,25 @@
-## Summary
-<!-- What does this PR change, and why? -->
+## What & why
+<!-- Summary. Link requirement IDs (FR-xxx / NFR-xx) and issues. -->
 
-## Requirements
-<!-- e.g. FR-SES-03, NFR-01 -->
+## How
+<!-- Approach, notable design choices. ADR link if architectural. -->
 
-## How it was tested
-<!-- Commands run, tests added, screenshots for UI changes -->
+## Testing
+- [ ] Unit
+- [ ] Integration (Workers pool)
+- [ ] Tenant-isolation suite unaffected / extended
+- [ ] Manual check (describe)
 
-## Checklist
+## Security checklist
+- [ ] AuthZ via central `can()`; no ad-hoc checks
+- [ ] Inputs validated with Zod at the edge
+- [ ] No note content / secrets in logs
+- [ ] Memory returned to agents is in the untrusted envelope
+- [ ] Migration is backward-compatible
+
+## Hygiene
 - [ ] Conventional Commit title (`type(scope): summary`)
-- [ ] Tests added or updated; `pnpm check` passes locally
-- [ ] Security considered: authz, input validation, redaction, no note content in logs
-- [ ] Threat-model review if this touches auth, sharing or storage
-- [ ] Docs / ADR updated if behaviour or architecture changed
-- [ ] D1 migration (if any) is forward-only and backward-compatible
+- [ ] `pnpm check` passes locally
+
+## Docs
+- [ ] README / docs / ADR updated where behaviour changed
