@@ -58,11 +58,19 @@ pnpm --filter @second-brain/server dev                   # http://localhost:8787
 
    or `brain connect claude-code`. Then start a session and ask it to call `brain_context`.
 
+   To try the OAuth flow instead, leave out the header (`claude mcp add --transport http second-brain http://localhost:8787/mcp`) and run `/mcp` → **Authenticate** in Claude Code. The browser opens the consent page at `/oauth/authorize`, after sign-in if needed.
+
 The nightly index rebuild runs on a Cron trigger. To run it locally, start with `wrangler dev --test-scheduled` and open `http://localhost:8787/__scheduled`.
 
 ### Tests that use the Workers runtime
 
 `packages/db` and `apps/server` tests run inside workerd with a real D1 (via `@cloudflare/vitest-plugin`), with migrations from `packages/db/migrations` applied in a setup file. They need no network or account.
+
+`apps/server/test/isolation.test.ts` is the tenant-isolation suite: what one user can reach of another's space through every read and write path as grants are created, accepted, narrowed to a project, hidden from agents and revoked. Any change to authz, sharing or a query in `packages/db` must keep it green; new read paths get a case there.
+
+### Trying sharing locally
+
+Sign in as two users (two browsers, or one private window). As the first, `POST /api/v1/grants {space_id, email, role}`; without `RESEND_API_KEY` the invite email is printed to the `wrangler dev` console. As the second, `GET /api/v1/invitations` and `POST /api/v1/grants/:id/accept {"include_in_agent_context": true}`.
 
 ## Branches and pull requests
 

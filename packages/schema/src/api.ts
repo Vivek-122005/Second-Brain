@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { NoteType, ProjectStatus } from './notes';
+import type { SourceRef, SpaceRole } from './sharing';
 import type { CheckOutput, ProjectSummary, SearchHit } from './tools';
 
 /**
@@ -46,8 +47,13 @@ export interface SpaceSummary {
   id: string;
   name: string;
   kind: 'personal' | 'team';
-  role: 'owner' | 'admin' | 'editor' | 'viewer';
+  /** Your highest role here (for project-only access, the highest project role). */
+  role: SpaceRole;
   vault: { provider: 'managed' | 'github'; repo: string | null };
+  /** Present when the space is shared with you. */
+  source?: SourceRef;
+  /** Present when you can only see some projects of the space (project-level grants). */
+  projects?: { slug: string; role: SpaceRole }[];
 }
 /** GET /api/v1/me */
 export interface MeResponse {
@@ -146,17 +152,20 @@ export interface NoteSummary {
   project: string | null;
   tags: string[];
   updated_at: string;
+  /** Present for notes in a space shared with you. */
+  source?: SourceRef;
 }
-/** GET /api/v1/notes?type=&project=&cursor=&limit= → `Page<NoteSummary>` */
+/** GET /api/v1/notes?type=&project=&space_id=&cursor=&limit= → `Page<NoteSummary>` */
 export const ListNotesQuery = z.object({
   type: NoteType.optional(),
+  space_id: z.string().min(1).max(64).optional(),
   project: z.string().optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 export type ListNotesQuery = z.infer<typeof ListNotesQuery>;
 
-/** GET /api/v1/note?path=… */
+/** GET /api/v1/note?path=…&space_id=… (space_id from `source.space`; omitted = your own first) */
 export interface NoteDetail extends NoteSummary {
   frontmatter: Record<string, unknown>;
   /** Body without frontmatter. */
@@ -174,6 +183,8 @@ export const SaveNoteRequest = z.object({
   content: z.string().max(200_000),
   base_version: z.string().nullable(),
   message: z.string().max(200).optional(),
+  /** Write into a space shared with you (editor or above). Omitted = your default space. */
+  space_id: z.string().min(1).max(64).optional(),
 });
 export type SaveNoteRequest = z.infer<typeof SaveNoteRequest>;
 export interface SaveNoteResponse {
@@ -182,7 +193,7 @@ export interface SaveNoteResponse {
   commit_sha: string;
 }
 
-/** GET /api/v1/search?q=&types=topic,project&project=&limit= */
+/** GET /api/v1/search?q=&types=topic,project&project=&space_id=&limit= */
 export interface SearchResponse {
   hits: SearchHit[];
   mode: 'keyword' | 'hybrid';
@@ -194,7 +205,7 @@ export interface ProjectsResponse {
   items: ProjectSummary[];
 }
 
-/** GET /api/v1/dashboard */
+/** GET /api/v1/dashboard?space_id= (one space; default = your default space) */
 export interface DashboardResponse {
   projects: ProjectSummary[];
   recent_sessions: {
@@ -215,7 +226,7 @@ export interface DashboardResponse {
   stats: { notes: number; topics: number; decisions: number; sessions: number };
 }
 
-/** GET /api/v1/graph */
+/** GET /api/v1/graph?space_id= (one space; default = your default space) */
 export interface GraphResponse {
   nodes: { id: string; title: string; type: NoteType }[];
   edges: { source: string; target: string }[];
@@ -235,6 +246,7 @@ export const ImportRequest = z.object({
     .min(1)
     .max(500),
   message: z.string().max(200).optional(),
+  space_id: z.string().min(1).max(64).optional(),
 });
 export type ImportRequest = z.infer<typeof ImportRequest>;
 export interface ImportResponse {
@@ -242,6 +254,28 @@ export interface ImportResponse {
   skipped: { path: string; reason: string }[];
   commit_sha: string | null;
 }
+
+// ── Connected apps (OAuth 2.1 for MCP clients) ────────────────────────────
+/**
+ * An MCP client the user approved on the OAuth consent screen. Disconnecting it revokes every
+ * access and refresh token the client holds.
+ */
+export interface OAuthGrant {
+  id: string;
+  client_id: string;
+  /** Name the client registered with. It is self-declared, so show `redirect_hosts` next to it. */
+  client_name: string;
+  client_uri: string | null;
+  /** Hosts of the client's registered redirect URIs, e.g. `claude.ai` or `localhost`. */
+  redirect_hosts: string[];
+  scopes: KeyScope[];
+  /** The space the client may use. */
+  space_id: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+/** GET /api/v1/oauth/grants → `OAuthGrantsResponse` · DELETE /api/v1/oauth/grants/:id → 204 */
+export type OAuthGrantsResponse = Page<OAuthGrant>;
 
 // ── Vault: GitHub sync ─────────────────────────────────────────────────────
 /** `owner/name` of a GitHub repository. */

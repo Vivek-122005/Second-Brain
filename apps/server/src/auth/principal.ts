@@ -3,7 +3,9 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { csv, type Env } from '../env';
 import { forbidden, unauthorized } from '../lib/http';
-import { getUser, readableSpaces, type SpaceRow } from '../services/spaces';
+import { ACCESS_TOKEN_PREFIX } from '../oauth/metadata';
+import { principalFromAccessToken } from '../oauth/tokens';
+import { getUser, type ReadableSpace, readableSpaces } from '../services/spaces';
 import { parseScopes, touchKey, verifyKey } from './keys';
 import { SESSION_COOKIE, verifySession } from './sessions';
 
@@ -12,15 +14,21 @@ export interface Principal {
   userId: string;
   email: string;
   name: string | null;
-  via: 'key' | 'session';
+  via: 'key' | 'session' | 'oauth';
+  /** API key id, or the OAuth grant id when `via` is `oauth`. */
   keyId: string | null;
   keyPrefix: string | null;
+  /** The key's client, or the OAuth client's registered name. */
   client: string | null;
   machine: string | null;
   scopes: KeyScope[];
-  /** Spaces this caller may read (already narrowed by a key's space restriction). */
-  spaces: SpaceRow[];
-  defaultSpace: SpaceRow;
+  /**
+   * Spaces this caller may read, own first, with the caller's access on each (already narrowed
+   * by a key's space restriction; agents only see shares opted into their context). Authorize
+   * with `authz` (`can`, `readScope`), never by inspecting this directly.
+   */
+  spaces: ReadableSpace[];
+  defaultSpace: ReadableSpace;
   /** Set when a key is limited to one project. */
   project: string | null;
 }
@@ -39,7 +47,7 @@ async function fromBearer(
   if (!key) return null;
   const user = await getUser(env.DB, key.user_id);
   if (!user) return null;
-  let spaces = await readableSpaces(env.DB, user.id);
+  let spaces = await readableSpaces(env.DB, user.id, { forAgent: true });
   if (key.space_id) spaces = spaces.filter((s) => s.id === key.space_id);
   const defaultSpace = spaces[0];
   if (!defaultSpace) return null;
@@ -67,7 +75,7 @@ async function fromSession(env: Env, cookie: string): Promise<Principal | null> 
   if (!session) return null;
   const user = await getUser(env.DB, session.user_id);
   if (!user) return null;
-  const spaces = await readableSpaces(env.DB, user.id);
+  const spaces = await readableSpaces(env.DB, user.id, { forAgent: false });
   const defaultSpace = spaces[0];
   if (!defaultSpace) return null;
   return {
@@ -94,12 +102,18 @@ function executionCtx(c: Context): ExecutionContext | undefined {
   }
 }
 
-/** Resolves the caller from `Authorization: Bearer` or the session cookie. Never throws. */
+/**
+ * Resolves the caller from `Authorization: Bearer` (an API key, or an OAuth access token, which is
+ * only accepted on /mcp) or the session cookie. Never throws.
+ */
 export const identify: MiddlewareHandler<AppEnv> = async (c, next) => {
   let principal: Principal | null = null;
   const auth = c.req.header('authorization');
   if (auth?.toLowerCase().startsWith('bearer ')) {
-    principal = await fromBearer(c.env, auth.slice(7).trim(), executionCtx(c));
+    const token = auth.slice(7).trim();
+    principal = token.startsWith(ACCESS_TOKEN_PREFIX)
+      ? await principalFromAccessToken(c.env, token, c.req.url, executionCtx(c))
+      : await fromBearer(c.env, token, executionCtx(c));
   } else {
     const cookie = getCookie(c, SESSION_COOKIE);
     if (cookie) principal = await fromSession(c.env, cookie);
@@ -126,7 +140,7 @@ export function requireScope(p: Principal, scope: KeyScope): void {
 }
 
 /** Resolves the space a request targets, defaulting to the caller's default space. */
-export function spaceFor(p: Principal, spaceId?: string | null): SpaceRow {
+export function spaceFor(p: Principal, spaceId?: string | null): ReadableSpace {
   if (!spaceId) return p.defaultSpace;
   const s = p.spaces.find((x) => x.id === spaceId);
   if (!s) throw forbidden('You do not have access to that space.');
