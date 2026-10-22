@@ -192,7 +192,8 @@ export interface SearchResponse {
   hits: SearchHit[];
   /** The mode that actually ran: `hybrid` only when semantic results were fused. */
   mode: 'keyword' | 'hybrid';
-  semantic: SemanticStatus;
+  /** Always sent by the server; optional so older clients and mocks still type-check. */
+  semantic?: SemanticStatus;
 }
 
 /** GET /api/v1/projects?status= */
