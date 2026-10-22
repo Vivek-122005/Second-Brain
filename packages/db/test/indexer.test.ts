@@ -178,6 +178,36 @@ describe('searchNotes', () => {
     expect(await getNote(db, ['spc_a'], 'topics/secret.md')).toBeNull();
   });
 
+  it('limits a project token to that project, inside SQL', async () => {
+    await seed();
+    const billing = ['spc_a:billing'];
+    const hits = await searchNotes(db, {
+      spaceIds: billing,
+      query: 'webhooks',
+      limit: 50,
+      includeSessions: true,
+    });
+    expect(hits.map((h) => h.path).sort()).toEqual([
+      'projects/billing.md',
+      'sessions/2026/10/2026-10-20-ses_a.md',
+    ]);
+    expect(hits.every((h) => h.space_id === 'spc_a')).toBe(true);
+    expect(await getNote(db, billing, 'topics/webhooks.md')).toBeNull();
+    expect((await listProjects(db, billing)).map((x) => x.slug)).toEqual(['billing']);
+    const garden = ['spc_a:garden'];
+    expect(await getBacklinks(db, 'spc_a', 'topics/webhooks.md', garden)).toEqual([]);
+    const g = await graph(db, billing);
+    expect(g.nodes.map((n) => n.id).sort()).toEqual([
+      'decisions/billing.md',
+      'projects/billing.md',
+    ]);
+    expect(g.edges).toEqual([]);
+    expect((await listNotes(db, { spaceIds: garden, limit: 10 })).items.map((n) => n.path)).toEqual(
+      ['projects/garden.md'],
+    );
+    expect(await noteStats(db, garden)).toEqual({ notes: 1, topics: 0, decisions: 0, sessions: 0 });
+  });
+
   it('filters by type and project', async () => {
     await seed();
     const topics = await searchNotes(db, {
@@ -200,7 +230,7 @@ describe('searchNotes', () => {
 describe('links', () => {
   it('records backlinks and broken links, and repairs them when the target appears', async () => {
     await seed();
-    expect(await getBacklinks(db, 'spc_a', 'topics/webhooks.md')).toEqual([
+    expect(await getBacklinks(db, 'spc_a', 'topics/webhooks.md', ['spc_a'])).toEqual([
       { path: 'projects/billing.md', title: 'Billing refactor' },
     ]);
     expect(await brokenLinks(db, 'spc_a')).toEqual([
