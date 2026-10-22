@@ -1,0 +1,16 @@
+{"id":"exact-passkeys","query":"passkeys","relevant":{"topics/authentication.md":3}}
+{"id":"exact-bm25","query":"BM25","relevant":{"topics/search-ranking.md":3,"decisions/platform.md":1}}
+{"id":"exact-rollback","query":"wrangler rollback","relevant":{"topics/deployment.md":3}}
+{"id":"exact-stripe","query":"Stripe webhooks","relevant":{"projects/billing.md":3}}
+{"id":"exact-pepper","query":"HMAC pepper","relevant":{"topics/api-keys.md":3}}
+{"id":"exact-frost","query":"frost dates","relevant":{"projects/garden-planner.md":3}}
+{"id":"para-login","query":"how do users login","relevant":{"topics/authentication.md":3,"topics/api-keys.md":1}}
+{"id":"para-ship","query":"how do we ship a release","relevant":{"topics/deployment.md":3}}
+{"id":"para-price","query":"what is the monthly price","relevant":{"topics/costs.md":3,"projects/billing.md":1}}
+{"id":"para-tired","query":"why am I tired","relevant":{"topics/sleep.md":3}}
+{"id":"para-meaning","query":"find notes by meaning","relevant":{"topics/semantic-search.md":3,"decisions/platform.md":1,"topics/search-ranking.md":1}}
+{"id":"para-database","query":"which database persists the index","relevant":{"topics/storage.md":3}}
+{"id":"para-planting","query":"when to plant seeds","relevant":{"projects/garden-planner.md":3}}
+{"id":"para-remember","query":"remember context between sessions","relevant":{"topics/session-ritual.md":3}}
+{"id":"mixed-embeddings","query":"embeddings cost","relevant":{"topics/costs.md":2,"topics/semantic-search.md":2,"decisions/platform.md":1}}
+{"id":"mixed-sqlite","query":"sqlite ranking","relevant":{"topics/search-ranking.md":3,"topics/storage.md":2}}
