@@ -57,15 +57,31 @@ const rootRoute = createRootRoute({
   ),
 });
 
+type SignInSearch = { redirect?: string | undefined; next?: string | undefined };
+
+const signInSearch = (s: Record<string, unknown>): SignInSearch => ({
+  redirect: str(s.redirect),
+  next: str(s.next),
+});
+
 const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sign-in',
-  validateSearch: (s: Record<string, unknown>): { redirect?: string | undefined } => ({
-    redirect: str(s.redirect),
-  }),
+  validateSearch: signInSearch,
   component: function SignInRoute() {
-    const { redirect } = signInRoute.useSearch();
-    return <SignInPage redirect={redirect} />;
+    const { redirect, next } = signInRoute.useSearch();
+    return <SignInPage redirect={next ?? redirect} />;
+  },
+});
+
+/** `/login?next=<url>`: used by the server (e.g. OAuth authorize) to send people here first. */
+const loginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/login',
+  validateSearch: signInSearch,
+  component: function LoginRoute() {
+    const { redirect, next } = loginRoute.useSearch();
+    return <SignInPage redirect={next ?? redirect} />;
   },
 });
 
@@ -198,6 +214,7 @@ const settingsRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   signInRoute,
+  loginRoute,
   deviceRoute,
   appRoute.addChildren([
     todayRoute,
