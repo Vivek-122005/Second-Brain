@@ -18,6 +18,7 @@ export default defineConfig(async () => {
             APP_ORIGINS: 'http://app.test',
             EMAIL_FROM: 'test@example.com',
             KEY_PEPPER: 'test-pepper',
+            RATE_LIMITS: 'off',
             TEST_MIGRATIONS: migrations,
           },
         },

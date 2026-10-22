@@ -6,9 +6,17 @@ import { upsertUserByEmail } from '../src/services/spaces';
 
 export { env };
 
-export async function call(input: string, init: RequestInit = {}): Promise<Response> {
+export async function call(
+  input: string,
+  init: RequestInit = {},
+  envOverrides: Partial<typeof env> = {},
+): Promise<Response> {
   const ctx = createExecutionContext();
-  const res = await worker.fetch(new Request(`http://app.test${input}`, init), env, ctx);
+  const res = await worker.fetch(
+    new Request(`http://app.test${input}`, init),
+    { ...env, ...envOverrides },
+    ctx,
+  );
   await waitOnExecutionContext(ctx);
   return res;
 }

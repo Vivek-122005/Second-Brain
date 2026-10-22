@@ -1,8 +1,11 @@
 import { rebuildIndex } from '@second-brain/db';
 import { Hono } from 'hono';
+import { pruneOidcFlows } from './auth/oidc';
+import { pruneChallenges } from './auth/passkeys';
 import { type AppEnv, identify, requireScope } from './auth/principal';
 import type { Env } from './env';
 import { HttpError, problem } from './lib/http';
+import { apiRateLimit, authRateLimit, pruneRateLimits } from './lib/ratelimit';
 import { handleMcp } from './mcp/server';
 import { apiRoutes } from './routes/api';
 import { authRoutes } from './routes/auth';
@@ -23,6 +26,10 @@ app.get('/health', (c) => c.json({ ok: true }));
 
 app.use('/api/*', identify);
 app.use('/mcp', identify);
+// Strict per-IP limit on sign-in endpoints; per key/principal limit on the API and MCP.
+app.use('/api/v1/auth/*', authRateLimit);
+app.use('/api/*', apiRateLimit);
+app.use('/mcp', apiRateLimit);
 app.route('/api/v1/auth', authRoutes);
 app.route('/api/v1', apiRoutes);
 
@@ -93,5 +100,8 @@ export default {
   fetch: app.fetch,
   async scheduled(_controller, env, ctx) {
     ctx.waitUntil(rebuildAll(env));
+    ctx.waitUntil(
+      Promise.all([pruneChallenges(env.DB), pruneOidcFlows(env.DB), pruneRateLimits(env.DB)]),
+    );
   },
 } satisfies ExportedHandler<Env>;

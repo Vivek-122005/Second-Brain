@@ -49,28 +49,36 @@ export async function destroySession(db: D1Database, token: string): Promise<voi
 // ── Magic links ────────────────────────────────────────────────────────────
 const LOGIN_TTL_MS = 15 * 60_000;
 
-export async function createLoginToken(db: D1Database, email: string): Promise<string> {
+/** Issues a magic-link token. `next` is an already-validated same-origin path, or null. */
+export async function createLoginToken(
+  db: D1Database,
+  email: string,
+  next: string | null = null,
+): Promise<string> {
   const token = randomToken(43);
   const now = Date.now();
   await db
     .prepare(
-      'INSERT INTO login_tokens (token_hash, email, created_at, expires_at) VALUES (?, ?, ?, ?)',
+      'INSERT INTO login_tokens (token_hash, email, created_at, expires_at, next) VALUES (?, ?, ?, ?, ?)',
     )
-    .bind(await sha256Hex(token), email.trim().toLowerCase(), now, now + LOGIN_TTL_MS)
+    .bind(await sha256Hex(token), email.trim().toLowerCase(), now, now + LOGIN_TTL_MS, next)
     .run();
   return token;
 }
 
-/** Consumes a magic-link token once. Returns the email it was issued for. */
-export async function consumeLoginToken(db: D1Database, token: string): Promise<string | null> {
+/** Consumes a magic-link token once. Returns the email it was issued for and where to land. */
+export async function consumeLoginToken(
+  db: D1Database,
+  token: string,
+): Promise<{ email: string; next: string | null } | null> {
   if (!/^[A-Za-z0-9]{20,100}$/.test(token)) return null;
   const hash = await sha256Hex(token);
   const now = Date.now();
   const row = await db
     .prepare(
-      'UPDATE login_tokens SET used_at = ?1 WHERE token_hash = ?2 AND used_at IS NULL AND expires_at > ?1 RETURNING email',
+      'UPDATE login_tokens SET used_at = ?1 WHERE token_hash = ?2 AND used_at IS NULL AND expires_at > ?1 RETURNING email, next',
     )
     .bind(now, hash)
-    .first<{ email: string }>();
-  return row?.email ?? null;
+    .first<{ email: string; next: string | null }>();
+  return row ?? null;
 }
