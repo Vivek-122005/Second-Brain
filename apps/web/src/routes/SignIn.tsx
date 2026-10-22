@@ -1,14 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import { KeyRound, MailCheck } from 'lucide-react';
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useApi } from '../api/context';
 import { qk } from '../api/queries';
 import { Button } from '../components/ui/Button';
 import { errorMessage } from '../lib/errors';
 import { TextField } from '../components/ui/Field';
 import { passkeyErrorMessage, passkeysSupported, signInWithPasskey } from '../lib/passkeys';
-import { safeRedirect } from '../lib/redirect';
+import { resolveDestination } from '../lib/redirect';
 
 function GoogleMark() {
   // Neutral monochrome "G" so the button stays calm (no brand colors), still recognisable.
@@ -58,12 +58,25 @@ export function SignInPage({ redirect }: { redirect?: string | undefined }) {
   // An older server without /auth/providers still supports the magic link.
   const offers = providers.data ?? { passkey: false, google: false, magic_link: true };
   const showPasskey = offers.passkey && passkeysSupported();
-  const destination = safeRedirect(redirect);
+  const destination = resolveDestination(redirect);
 
   const finish = async () => {
     await qc.invalidateQueries({ queryKey: qk.me });
-    await router.navigate({ href: destination });
+    // Server-rendered pages (e.g. the OAuth consent screen) are outside the SPA router.
+    if (destination.server) window.location.assign(destination.href);
+    else await router.navigate({ href: destination.href });
   };
+
+  // Already signed in (e.g. sent here by the OAuth authorize page): continue straight away.
+  const session = useQuery({ queryKey: qk.me, queryFn: () => api.me(), retry: false });
+  const continued = useRef(false);
+  useEffect(() => {
+    if (session.isSuccess && !continued.current) {
+      continued.current = true;
+      if (destination.server) window.location.assign(destination.href);
+      else void router.navigate({ href: destination.href });
+    }
+  }, [session.isSuccess, destination.href, destination.server, router]);
   const passkey = useMutation({
     mutationFn: () => signInWithPasskey(api),
     onMutate: () => setPasskeyError(null),
@@ -71,7 +84,7 @@ export function SignInPage({ redirect }: { redirect?: string | undefined }) {
     onError: (err) => setPasskeyError(passkeyErrorMessage(err)),
   });
   const google = useMutation({
-    mutationFn: () => api.startGoogleSignIn(destination),
+    mutationFn: () => api.startGoogleSignIn(destination.href),
     // Against a real server this navigates away; the mock signs in directly.
     onSuccess: finish,
   });

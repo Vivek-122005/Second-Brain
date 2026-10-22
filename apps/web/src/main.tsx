@@ -17,7 +17,7 @@ async function start() {
   const onError = (error: unknown) => {
     if (!isApiError(error) || !error.isUnauthorized) return;
     const { pathname, searchStr } = router.state.location;
-    if (pathname === '/sign-in') return;
+    if (pathname === '/sign-in' || pathname === '/login') return;
     queryClient.setQueryData(qk.me, undefined);
     void router.navigate({ to: '/sign-in', search: { redirect: `${pathname}${searchStr}` } });
   };

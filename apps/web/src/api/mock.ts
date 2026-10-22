@@ -50,6 +50,7 @@ import type {
   AuthProviders,
   PasskeyLoginOptionsResponse,
   PasskeyRegisterOptionsResponse,
+  Passkey,
 } from './auth-contract';
 import { buildVault, FIXTURE_DEVICE_CODE, FIXTURE_KEYS } from './fixtures';
 
@@ -78,6 +79,8 @@ export interface MockServerOptions {
   signedIn?: boolean;
   /** Persist the signed-in flag in sessionStorage so a reload keeps you signed in. */
   persistSession?: boolean;
+  /** Whether email links are offered (default true). Off, the last passkey cannot be removed. */
+  magicLink?: boolean;
 }
 
 class HttpProblem extends Error {
@@ -167,8 +170,9 @@ export class MockServer {
   private keys: ApiKey[] = [];
   private devices = new Map<string, DeviceRequest>();
   private magicTokens = new Set<string>();
-  /** Passkey credential ids registered in this mock session (signatures are not verified). */
-  private passkeys: { id: string; name: string }[] = [];
+  /** Passkeys registered in this mock session (signatures are not verified). */
+  private passkeys: Passkey[] = [];
+  private readonly magicLink: boolean;
   private registerChallenge: string | null = null;
   private loginChallenge: string | null = null;
   private versionCounter = 0;
@@ -183,6 +187,14 @@ export class MockServer {
     this.persistSession = opts.persistSession ?? false;
     const persisted = this.persistSession ? readSessionFlag() : null;
     this.signedIn = persisted ?? opts.signedIn ?? true;
+    this.magicLink = opts.magicLink ?? true;
+    this.passkeys.push({
+      id: 'pk_seed_macbook',
+      name: 'MacBook Pro',
+      created_at: new Date(this.now().getTime() - 9 * 86_400_000).toISOString(),
+      last_used_at: new Date(this.now().getTime() - 3_600_000).toISOString(),
+      transports: ['internal', 'hybrid'],
+    });
     this.seed();
   }
 
@@ -654,7 +666,7 @@ export class MockServer {
   private route(method: string, path: string, q: URLSearchParams, body: unknown): Response {
     // Public endpoints.
     if (method === 'GET' && path === '/auth/providers') {
-      const providers: AuthProviders = { passkey: true, google: true, magic_link: true };
+      const providers: AuthProviders = { passkey: true, google: true, magic_link: this.magicLink };
       return json(200, providers);
     }
     if (method === 'POST' && path === '/auth/passkey/login/options') {
@@ -747,8 +759,42 @@ export class MockServer {
         throw problem(400, 'Invalid passkey response', 'Start adding the passkey again.');
       }
       this.registerChallenge = null;
-      this.passkeys.push({ id, name: typeof req?.name === 'string' ? req.name : 'Passkey' });
+      this.passkeys.push({
+        id,
+        name: typeof req?.name === 'string' && req.name.trim() ? req.name.trim() : 'Passkey',
+        created_at: this.now().toISOString(),
+        last_used_at: null,
+        transports: ['internal'],
+      });
       return json(200, { verified: true });
+    }
+    if (method === 'GET' && path === '/auth/passkeys') return json(200, this.passkeys);
+    const passkeyMatch = /^\/auth\/passkeys\/([^/]+)$/.exec(path);
+    if (passkeyMatch) {
+      const id = decodeURIComponent(passkeyMatch[1] ?? '');
+      const index = this.passkeys.findIndex((k) => k.id === id);
+      const found = this.passkeys[index];
+      if (!found) throw problem(404, 'Not found', 'No such passkey.');
+      if (method === 'PATCH') {
+        const name = (body as { name?: unknown } | undefined)?.name;
+        if (typeof name !== 'string' || !name.trim() || name.length > 60) {
+          throw problem(400, 'Invalid input', 'Give the passkey a name of up to 60 characters.');
+        }
+        found.name = name.trim();
+        return json(200, found);
+      }
+      if (method === 'DELETE') {
+        // Google is offered by the mock too, but an account only has it if it signed in with it.
+        if (this.passkeys.length === 1 && !this.magicLink) {
+          throw problem(
+            409,
+            'Last sign-in method',
+            'Add another passkey before removing this one, or you will be locked out.',
+          );
+        }
+        this.passkeys.splice(index, 1);
+        return new Response(null, { status: 204 });
+      }
     }
     if (method === 'GET' && path === '/dashboard') return json(200, this.dashboard());
     if (method === 'GET' && path === '/notes') return json(200, this.listNotes(q));

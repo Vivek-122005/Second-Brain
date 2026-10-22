@@ -26,6 +26,7 @@ export const qk = {
   search: (q: string, types: NoteType[]) => ['search', q, types] as const,
   projects: (status?: ProjectStatus) => ['projects', status ?? 'all'] as const,
   keys: ['keys'] as const,
+  passkeys: ['passkeys'] as const,
   connect: ['connect'] as const,
   device: (code: string) => ['device', code] as const,
 };

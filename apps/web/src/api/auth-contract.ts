@@ -26,6 +26,8 @@ export interface AuthProviders {
 export interface PasskeyRegisterOptionsInput {
   /** Friendly name for the passkey, e.g. "MacBook Pro". */
   name?: string;
+  /** Required only when creating a new account with a passkey (no session yet). */
+  email?: string;
 }
 export type PasskeyRegisterOptionsResponse = PublicKeyCredentialCreationOptionsJSON;
 
@@ -55,3 +57,18 @@ export interface PasskeyLoginVerifyResponse {
 
 /** GET /api/v1/auth/google/start?redirect=… → 302 to Google, back to the app signed in. */
 export const GOOGLE_START_PATH = '/api/v1/auth/google/start';
+
+/** GET /api/v1/auth/passkeys (session auth). TODO(schema): `Passkey` */
+export interface Passkey {
+  id: string;
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
+  transports: string[];
+}
+
+/** PATCH /api/v1/auth/passkeys/:id. TODO(schema): `RenamePasskeyRequest` */
+export interface RenamePasskeyInput {
+  name: string;
+}
+/** DELETE /api/v1/auth/passkeys/:id → 204, or 409 when it is the account's last sign-in method. */
