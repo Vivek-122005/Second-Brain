@@ -41,6 +41,7 @@ import type {
   NoteDetail,
   NoteSummary,
   NoteType,
+  OAuthGrant,
   Page,
   ProblemDetails,
   ProjectSummary,
@@ -187,6 +188,7 @@ export class MockServer {
   private readonly magicLink: boolean;
   private readonly vaultKek: boolean;
   private vaults = new Map<string, MockVault>();
+  private oauthGrants: OAuthGrant[] = [];
   private registerChallenge: string | null = null;
   private loginChallenge: string | null = null;
   private versionCounter = 0;
@@ -209,6 +211,17 @@ export class MockServer {
       created_at: new Date(this.now().getTime() - 9 * 86_400_000).toISOString(),
       last_used_at: new Date(this.now().getTime() - 3_600_000).toISOString(),
       transports: ['internal', 'hybrid'],
+    });
+    this.oauthGrants.push({
+      id: 'oag_seed_claude',
+      client_id: 'mcp_client_claude',
+      client_name: 'Claude',
+      client_uri: 'https://claude.ai',
+      redirect_hosts: ['claude.ai'],
+      scopes: ['read', 'write'],
+      space_id: 'spc_personal',
+      created_at: new Date(this.now().getTime() - 6 * 86_400_000).toISOString(),
+      last_used_at: new Date(this.now().getTime() - 2 * 3_600_000).toISOString(),
     });
     this.seed();
   }
@@ -1026,6 +1039,17 @@ export class MockServer {
         this.passkeys.splice(index, 1);
         return new Response(null, { status: 204 });
       }
+    }
+    if (method === 'GET' && path === '/oauth/grants') {
+      return json(200, { items: this.oauthGrants, next_cursor: null } satisfies Page<OAuthGrant>);
+    }
+    const oauthMatch = /^\/oauth\/grants\/([^/]+)$/.exec(path);
+    if (method === 'DELETE' && oauthMatch) {
+      const id = decodeURIComponent(oauthMatch[1] ?? '');
+      const before = this.oauthGrants.length;
+      this.oauthGrants = this.oauthGrants.filter((g) => g.id !== id);
+      if (this.oauthGrants.length === before) throw problem(404, 'Not found', 'No such app.');
+      return new Response(null, { status: 204 });
     }
     const vaultMatch = /^\/spaces\/([^/]+)\/vault(\/github)?$/.exec(path);
     if (vaultMatch) {

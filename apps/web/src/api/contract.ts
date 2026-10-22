@@ -22,6 +22,8 @@ export type {
   NoteDetail,
   NoteSummary,
   NoteType,
+  OAuthGrant,
+  OAuthGrantsResponse,
   Page,
   ProblemDetails,
   ProjectStatus,

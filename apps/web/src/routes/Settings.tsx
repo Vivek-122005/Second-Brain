@@ -5,6 +5,7 @@ import { useApi } from '../api/context';
 import type { SpaceSummary } from '../api/contract';
 import { useMe } from '../api/queries';
 import { Page } from '../components/layout/Pane';
+import { ConnectedAppsSection } from '../components/ConnectedAppsSection';
 import { SecuritySection } from '../components/SecuritySection';
 import { VaultSection } from '../components/VaultSection';
 import { Button } from '../components/ui/Button';
@@ -107,6 +108,8 @@ export function SettingsPage() {
         : null}
 
       {me.isSuccess ? <SecuritySection /> : null}
+
+      {me.isSuccess ? <ConnectedAppsSection spaces={me.data.spaces} /> : null}
 
       <GroupedSection
         title="Appearance"

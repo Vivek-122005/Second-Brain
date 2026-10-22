@@ -14,6 +14,7 @@ import type {
   MeResponse,
   NoteDetail,
   NoteSummary,
+  OAuthGrantsResponse,
   Page,
   ProblemDetails,
   ProjectStatus,
@@ -181,6 +182,10 @@ export interface ApiClient {
   followDevLink(link: string): Promise<void>;
   logout(): Promise<void>;
   me(): Promise<MeResponse>;
+  /** MCP clients approved on the OAuth consent screen ("Connected apps"). */
+  listOAuthGrants(): Promise<OAuthGrantsResponse>;
+  /** Disconnects the app: revokes every access and refresh token it holds. */
+  revokeOAuthGrant(id: string): Promise<void>;
   vaultStatus(spaceId: string): Promise<VaultStatus>;
   /** Fails with 409 (`repo_notes` / `managed_notes`) until `confirm_overwrite` is set. */
   connectGitHubVault(
@@ -302,6 +307,8 @@ export function createHttpClient(opts: HttpClientOptions = {}): ApiClient {
     followDevLink: (link) => openLink(link),
     logout: () => request<void>('POST', '/auth/logout'),
     me: () => request<MeResponse>('GET', '/me'),
+    listOAuthGrants: () => request<OAuthGrantsResponse>('GET', '/oauth/grants'),
+    revokeOAuthGrant: (id) => request<void>('DELETE', `/oauth/grants/${encodeURIComponent(id)}`),
     vaultStatus: (spaceId) =>
       request<VaultStatus>('GET', `/spaces/${encodeURIComponent(spaceId)}/vault`),
     connectGitHubVault: (spaceId, req) =>
