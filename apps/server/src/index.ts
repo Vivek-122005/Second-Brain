@@ -7,6 +7,7 @@ import { handleMcp } from './mcp/server';
 import { bearerChallenge, oauthApiRoutes, oauthRoutes, purgeExpiredOAuth } from './oauth';
 import { apiRoutes } from './routes/api';
 import { authRoutes } from './routes/auth';
+import { grantRoutes } from './routes/grants';
 import { vaultRoutes } from './routes/vault';
 import type { SpaceRow } from './services/spaces';
 import { vaultFor } from './vault';
@@ -34,6 +35,7 @@ app.use('/mcp', driftCheck);
 app.route('/api/v1/auth', authRoutes);
 app.route('/api/v1/oauth', oauthApiRoutes);
 app.route('/api/v1', apiRoutes);
+app.route('/api/v1', grantRoutes);
 app.route('/api/v1', vaultRoutes);
 app.route('/webhooks/github', githubWebhooks);
 
