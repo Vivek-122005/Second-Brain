@@ -27,6 +27,41 @@ Second Brain runs as one Cloudflare Worker per environment (`second-brain-stagin
 
 Until step 5 is done, the Deploy workflow skips with a notice instead of failing.
 
+6. **Semantic search (optional, ADR-0004).** `wrangler.jsonc` binds Workers AI (`AI`) and a Vectorize index (`VECTORIZE`) in `staging` and `production`. Create each index once, with its metadata indexes, **before the first deploy that uses it** (vectors written before a metadata index exists are not filterable by that property):
+
+   ```bash
+   # staging
+   pnpm exec wrangler vectorize create second-brain-staging --dimensions=768 --metric=cosine
+   pnpm exec wrangler vectorize create-metadata-index second-brain-staging --property-name=space_id --type=string
+   pnpm exec wrangler vectorize create-metadata-index second-brain-staging --property-name=note_id --type=string
+   pnpm exec wrangler vectorize create-metadata-index second-brain-staging --property-name=project --type=string
+   pnpm exec wrangler vectorize create-metadata-index second-brain-staging --property-name=type --type=string
+
+   # production
+   pnpm exec wrangler vectorize create second-brain-production --dimensions=768 --metric=cosine
+   pnpm exec wrangler vectorize create-metadata-index second-brain-production --property-name=space_id --type=string
+   pnpm exec wrangler vectorize create-metadata-index second-brain-production --property-name=note_id --type=string
+   pnpm exec wrangler vectorize create-metadata-index second-brain-production --property-name=project --type=string
+   pnpm exec wrangler vectorize create-metadata-index second-brain-production --property-name=type --type=string
+
+   # check
+   pnpm exec wrangler vectorize list-metadata-index second-brain-staging
+   ```
+
+   Give the deploy token (`CLOUDFLARE_API_TOKEN`) the extra permissions *Vectorize: Edit* and *Workers AI: Read*. Workers AI needs no setup beyond the binding.
+
+   Semantic search is **off per space** until the space owner turns it on:
+
+   ```bash
+   curl -X PATCH "$APP_URL/api/v1/spaces/<space_id>" \
+     -H "authorization: Bearer $SECOND_BRAIN_KEY" -H 'content-type: application/json' \
+     -d '{"semantic_enabled": true}'
+   ```
+
+   Turning it on embeds up to 200 chunks at once; the nightly Cron embeds the rest (200 chunks per run by default, `SEMANTIC_CRON_CHUNK_CAP` to change), so a large vault is spread over several nights. After that only notes whose content hash changed are re-embedded. Turning it off deletes the space's vectors. If the bindings are missing or failing, search silently falls back to keyword and responses say `semantic: "unavailable"`.
+
+   **Changing the embedding model:** set the `EMBEDDING_MODEL` var; every note is re-embedded over the following runs. A model with a different dimension needs a new index (create it, point `index_name` at it, deploy).
+
 ## Releasing to production
 
 ```bash
