@@ -1,0 +1,33 @@
+{
+  "name": "@second-brain/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The `brain` command: sign a machine in, keep its key in the OS keychain and connect AI assistants to Second Brain over MCP.",
+  "type": "module",
+  "bin": {
+    "brain": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@napi-rs/keyring": "^2.1.0"
+  },
+  "devDependencies": {
+    "@second-brain/config": "workspace:*",
+    "@second-brain/core": "workspace:*",
+    "@second-brain/schema": "workspace:*",
+    "@types/node": "^22.20.4",
+    "picocolors": "^1.1.1",
+    "tsup": "^8.5.1"
+  }
+}
