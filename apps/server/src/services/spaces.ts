@@ -140,12 +140,20 @@ export async function ensurePersonalSpace(db: D1Database, user: UserRow): Promis
   return space;
 }
 
-/** Pending invitations sent to an email before it had an account now belong to that account. */
-async function attachPendingGrants(db: D1Database, email: string): Promise<void> {
+/**
+ * Pending invitations sent to an email before it had a verified account now belong to that
+ * account. Only accounts that have proven the email (magic link or verified Google email) qualify,
+ * so a passkey sign-up under someone else's address never receives their invitations.
+ */
+export async function attachPendingGrants(db: D1Database, email: string): Promise<void> {
   await db
     .prepare(
-      `UPDATE grants SET grantee_user_id = (SELECT id FROM users WHERE email = ?1 AND deleted_at IS NULL)
-       WHERE grantee_email = ?1 AND grantee_user_id IS NULL AND status = 'pending'`,
+      `UPDATE grants
+          SET grantee_user_id = (SELECT id FROM users
+                                  WHERE email = ?1 AND deleted_at IS NULL AND email_verified_at IS NOT NULL)
+        WHERE grantee_email = ?1 AND grantee_user_id IS NULL AND status = 'pending'
+          AND EXISTS (SELECT 1 FROM users
+                       WHERE email = ?1 AND deleted_at IS NULL AND email_verified_at IS NOT NULL)`,
     )
     .bind(email)
     .run();

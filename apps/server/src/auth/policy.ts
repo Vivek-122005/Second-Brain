@@ -2,6 +2,7 @@ import type { Context } from 'hono';
 import { setCookie } from 'hono/cookie';
 import { csv, type Env, isDev } from '../env';
 import { audit } from '../services/audit';
+import { attachPendingGrants } from '../services/spaces';
 import type { AppEnv } from './principal';
 import { createSession, SESSION_COOKIE, SESSION_TTL_MS } from './sessions';
 
@@ -58,6 +59,12 @@ export async function markEmailVerified(
     )
     .bind(now, userId)
     .first<{ id: string }>();
+  // The email is proven now, so invitations addressed to it may attach to this account.
+  const owner = await db
+    .prepare('SELECT email FROM users WHERE id = ?')
+    .bind(userId)
+    .first<{ email: string }>();
+  if (owner) await attachPendingGrants(db, owner.email);
   if (!updated) return; // already verified
   const [pk, ids, sessions, keys] = await db.batch([
     db.prepare('DELETE FROM passkeys WHERE user_id = ?').bind(userId),

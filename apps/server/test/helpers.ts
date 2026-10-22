@@ -29,6 +29,10 @@ export async function newUserWithKey(
 ) {
   counter += 1;
   const user = await upsertUserByEmail(env.DB, `user${counter}-${crypto.randomUUID()}@example.com`);
+  // Test users sign in as if by magic link, so their email counts as proven.
+  await env.DB.prepare('UPDATE users SET email_verified_at = ? WHERE id = ?')
+    .bind(Date.now(), user.id)
+    .run();
   const { key, secret } = await createKey(env.DB, env.KEY_PEPPER, {
     userId: user.id,
     label: 'test',

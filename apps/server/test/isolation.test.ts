@@ -3,7 +3,8 @@ import type { Grant, Invitation } from '@second-brain/schema';
 import { describe, expect, it } from 'vitest';
 import { createKey } from '../src/auth/keys';
 import { createSession } from '../src/auth/sessions';
-import { upsertUserByEmail } from '../src/services/spaces';
+import { markEmailVerified } from '../src/auth/policy';
+import { createUser, upsertUserByEmail } from '../src/services/spaces';
 import { call, env, mcp, newUserWithKey } from './helpers';
 
 /**
@@ -557,6 +558,7 @@ describe('consent and revocation', () => {
     expect(created.body).toMatchObject({ status: 'pending', grantee_user_id: null, email });
 
     const user = await upsertUserByEmail(env.DB, email);
+    await markEmailVerified(env.DB, user.id, 'magic_link'); // signing up by magic link proves the email
     const session = await createSession(env.DB, user.id);
     const later = { cookie: `sb_session=${session.token}` };
     const inbox = await rest(later, 'GET', '/invitations');
@@ -576,6 +578,48 @@ describe('consent and revocation', () => {
     const accepted = await rest(later, 'GET', '/invitations?status=accepted');
     expect(accepted.body.items).toEqual([
       expect.objectContaining({ id: created.body.id, include_in_agent_context: false }),
+    ]);
+  });
+});
+
+describe('invitations to an email nobody has proven', () => {
+  it('never reach an account pre-registered with a passkey under that email', async () => {
+    const { a } = await world();
+    // The attacker signs up as the victim's address with their own passkey: email unproven.
+    const victimEmail = `victim-${crypto.randomUUID()}@example.com`;
+    const squatter = (await createUser(env.DB, `usr_${crypto.randomUUID()}`, victimEmail))!;
+    const squatterWeb = {
+      cookie: `sb_session=${(await createSession(env.DB, squatter.id)).token}`,
+    };
+
+    const created = await rest(asWeb(a), 'POST', '/grants', {
+      space_id: a.space,
+      email: victimEmail,
+      role: 'editor',
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+
+    const inbox = await rest(squatterWeb, 'GET', '/invitations?status=pending');
+    expect(inbox.status).toBe(200);
+    expect(inbox.body.items ?? inbox.body).toHaveLength(0);
+    const accept = await rest(squatterWeb, 'POST', `/grants/${created.body.id}/accept`, {
+      include_in_agent_context: true,
+    });
+    expect(accept.status).toBeGreaterThanOrEqual(400);
+    const row = await env.DB.prepare('SELECT grantee_user_id, status FROM grants WHERE id = ?')
+      .bind(created.body.id)
+      .first<{ grantee_user_id: string | null; status: string }>();
+    expect(row).toEqual({ grantee_user_id: null, status: 'pending' });
+
+    // The real owner proves the email (magic link): the squatter's sessions are revoked and the
+    // invitation now belongs to the verified account.
+    await markEmailVerified(env.DB, squatter.id, 'magic_link');
+    const stale = await rest(squatterWeb, 'GET', '/invitations?status=pending');
+    expect(stale.status).toBe(401);
+    const owner = { cookie: `sb_session=${(await createSession(env.DB, squatter.id)).token}` };
+    const after = await rest(owner, 'GET', '/invitations?status=pending');
+    expect((after.body.items ?? after.body).map((i: { id: string }) => i.id)).toEqual([
+      created.body.id,
     ]);
   });
 });
