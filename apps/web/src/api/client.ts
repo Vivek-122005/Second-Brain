@@ -23,6 +23,8 @@ import type {
 import {
   GOOGLE_START_PATH,
   type AuthProviders,
+  type Passkey,
+  type RenamePasskeyInput,
   type PasskeyLoginOptionsInput,
   type PasskeyLoginOptionsResponse,
   type PasskeyLoginVerifyInput,
@@ -143,6 +145,10 @@ export interface ApiClient {
   passkeyRegisterVerify(req: PasskeyRegisterVerifyInput): Promise<PasskeyRegisterVerifyResponse>;
   passkeyLoginOptions(req: PasskeyLoginOptionsInput): Promise<PasskeyLoginOptionsResponse>;
   passkeyLoginVerify(req: PasskeyLoginVerifyInput): Promise<PasskeyLoginVerifyResponse>;
+  listPasskeys(): Promise<Passkey[]>;
+  renamePasskey(id: string, req: RenamePasskeyInput): Promise<Passkey>;
+  /** Fails with 409 when the passkey is the account's last sign-in method. */
+  deletePasskey(id: string): Promise<void>;
   /** Starts Google sign-in (a full-page redirect against a real server). */
   startGoogleSignIn(redirect: string): Promise<void>;
   requestMagicLink(email: string): Promise<MagicLinkResponse>;
@@ -206,7 +212,7 @@ export function createHttpClient(opts: HttpClientOptions = {}): ApiClient {
     });
 
   async function request<T>(
-    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
     path: string,
     options: { query?: Query; body?: unknown } = {},
   ): Promise<T> {
@@ -249,6 +255,10 @@ export function createHttpClient(opts: HttpClientOptions = {}): ApiClient {
       request<PasskeyLoginOptionsResponse>('POST', '/auth/passkey/login/options', { body: req }),
     passkeyLoginVerify: (req) =>
       request<PasskeyLoginVerifyResponse>('POST', '/auth/passkey/login/verify', { body: req }),
+    listPasskeys: () => request<Passkey[]>('GET', '/auth/passkeys'),
+    renamePasskey: (id, req) =>
+      request<Passkey>('PATCH', `/auth/passkeys/${encodeURIComponent(id)}`, { body: req }),
+    deletePasskey: (id) => request<void>('DELETE', `/auth/passkeys/${encodeURIComponent(id)}`),
     startGoogleSignIn: (redirect) =>
       openLink(`${baseUrl}${GOOGLE_START_PATH}${toQueryString({ redirect })}`),
     requestMagicLink: (email) =>
