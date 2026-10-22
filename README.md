@@ -43,6 +43,25 @@ It begins as a personal daily-driver and is designed from the start to be sold t
 
 The full prioritised list is in [Requirements](docs/01-product/requirements.md).
 
+## Connect a client
+
+Every MCP client connects to one URL: `https://<host>/mcp`. Clients that support MCP authorization (OAuth 2.1) need nothing else. The first time they connect, a browser window asks you to sign in and approve the app, and you choose whether it may write as well as read. You can disconnect it at any time in the web app.
+
+| Client | How |
+|---|---|
+| Claude Code | `claude mcp add --transport http second-brain https://<host>/mcp`, then run `/mcp` in Claude Code and choose **Authenticate** |
+| Claude Desktop / claude.ai | Settings → Connectors → **Add custom connector**, and paste `https://<host>/mcp` |
+| Cursor | Add `{"mcpServers": {"second-brain": {"url": "https://<host>/mcp"}}}` to `~/.cursor/mcp.json` |
+| VS Code | `MCP: Add Server…` → HTTP → `https://<host>/mcp` |
+
+Clients without OAuth support, scripts and hooks use a scoped API key instead (`brain login`, or Keys in the web app):
+
+```bash
+claude mcp add --transport http second-brain https://<host>/mcp --header "Authorization: Bearer sb_live_..."
+```
+
+How the OAuth flow works is described in [LLD §8](docs/02-architecture/lld.md#8-oauth-21-for-mcp-clients).
+
 ## Architecture at a glance
 
 ```
