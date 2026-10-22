@@ -4,3 +4,14 @@ KEY_PEPPER=change-me-local-pepper
 VAULT_KEK=
 # Optional: send real magic-link emails through Resend.
 RESEND_API_KEY=
+# Optional: "Sign in with Google". Create an OAuth client (Web application) with the redirect URI
+# http://localhost:8787/api/v1/auth/google/callback. Google sign-in is on when both are set.
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+# Passkeys need nothing locally: WEBAUTHN_RP_ID (a var in wrangler.jsonc) falls back to the
+# request host (localhost) in development.
+# Optional: rate limiting. "off" disables it (tests only). Without the Workers Rate Limiting
+# bindings, a D1 counter enforces these per-minute limits.
+# RATE_LIMITS=on
+# RATE_LIMIT_AUTH_PER_MIN=30
+# RATE_LIMIT_API_PER_MIN=600

@@ -91,9 +91,10 @@ async function loadGrant(env: Env, id: string): Promise<GrantJoinRow | null> {
   return env.DB.prepare(`${SELECT_GRANT} WHERE g.id = ?`).bind(id).first<GrantJoinRow>();
 }
 
-const isRecipient = (p: Principal, g: GrantRow) =>
-  g.grantee_user_id === p.userId ||
-  (g.grantee_user_id === null && g.grantee_email.toLowerCase() === p.email.toLowerCase());
+// A grant addressed by email belongs to an account only once that account has proven it owns the
+// email (attachPendingGrants runs on verification). Matching on the bare email would let anyone
+// who pre-registers someone else's address with a passkey receive what is shared with them.
+const isRecipient = (p: Principal, g: GrantRow) => g.grantee_user_id === p.userId;
 
 const mayManage = (p: Principal, g: GrantRow) =>
   can(p, 'grant.manage', { spaceId: g.space_id, project: g.project_slug });
@@ -130,8 +131,10 @@ export async function createGrant(
   if (email === space.owner_email.toLowerCase())
     throw badRequest('That person owns this space already.');
 
+  // Bind to an existing account only if it has proven the email; otherwise the grant waits,
+  // addressed by email, until that proof (see attachPendingGrants).
   const grantee = await env.DB.prepare(
-    'SELECT id FROM users WHERE email = ? AND deleted_at IS NULL',
+    'SELECT id FROM users WHERE email = ? AND deleted_at IS NULL AND email_verified_at IS NOT NULL',
   )
     .bind(email)
     .first<{ id: string }>();
@@ -194,11 +197,11 @@ export async function listInvitations(
 ): Promise<Invitation[]> {
   const r = await env.DB.prepare(
     `${SELECT_GRANT}
-     WHERE (g.grantee_user_id = ?1 OR (g.grantee_user_id IS NULL AND g.grantee_email = ?2))
-       AND g.status = ?3 AND o.deleted_at IS NULL
+     WHERE g.grantee_user_id = ?1
+       AND g.status = ?2 AND o.deleted_at IS NULL
      ORDER BY g.created_at DESC`,
   )
-    .bind(p.userId, p.email.toLowerCase(), status)
+    .bind(p.userId, status)
     .all<GrantJoinRow>();
   return r.results.map(toInvitation);
 }

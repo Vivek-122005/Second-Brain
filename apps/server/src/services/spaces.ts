@@ -7,6 +7,7 @@ export interface UserRow {
   name: string | null;
   created_at: number;
   deleted_at: number | null;
+  email_verified_at: number | null;
 }
 
 export interface SpaceRow {
@@ -73,6 +74,7 @@ export async function upsertUserByEmail(db: D1Database, email: string): Promise<
     name: null,
     created_at: Date.now(),
     deleted_at: null,
+    email_verified_at: null,
   };
   await db
     .prepare(
@@ -88,6 +90,33 @@ export async function upsertUserByEmail(db: D1Database, email: string): Promise<
   if (!saved) throw new Error('user upsert failed');
   await ensurePersonalSpace(db, saved);
   return saved;
+}
+
+export async function getUserByEmail(db: D1Database, email: string): Promise<UserRow | null> {
+  return db
+    .prepare('SELECT * FROM users WHERE email = ? AND deleted_at IS NULL')
+    .bind(email.trim().toLowerCase())
+    .first<UserRow>();
+}
+
+/**
+ * Creates a user with a chosen id (passkey sign-up picks the id before the account exists, so it
+ * can be the WebAuthn user handle). Returns null if the email is already taken.
+ */
+export async function createUser(
+  db: D1Database,
+  id: string,
+  email: string,
+): Promise<UserRow | null> {
+  const r = await db
+    .prepare(
+      'INSERT INTO users (id, email, name, created_at) VALUES (?, ?, NULL, ?) ON CONFLICT DO NOTHING RETURNING *',
+    )
+    .bind(id, email.trim().toLowerCase(), Date.now())
+    .first<UserRow>();
+  if (!r) return null;
+  await ensurePersonalSpace(db, r);
+  return r;
 }
 
 export async function ensurePersonalSpace(db: D1Database, user: UserRow): Promise<SpaceRow> {
@@ -111,12 +140,20 @@ export async function ensurePersonalSpace(db: D1Database, user: UserRow): Promis
   return space;
 }
 
-/** Pending invitations sent to an email before it had an account now belong to that account. */
-async function attachPendingGrants(db: D1Database, email: string): Promise<void> {
+/**
+ * Pending invitations sent to an email before it had a verified account now belong to that
+ * account. Only accounts that have proven the email (magic link or verified Google email) qualify,
+ * so a passkey sign-up under someone else's address never receives their invitations.
+ */
+export async function attachPendingGrants(db: D1Database, email: string): Promise<void> {
   await db
     .prepare(
-      `UPDATE grants SET grantee_user_id = (SELECT id FROM users WHERE email = ?1 AND deleted_at IS NULL)
-       WHERE grantee_email = ?1 AND grantee_user_id IS NULL AND status = 'pending'`,
+      `UPDATE grants
+          SET grantee_user_id = (SELECT id FROM users
+                                  WHERE email = ?1 AND deleted_at IS NULL AND email_verified_at IS NOT NULL)
+        WHERE grantee_email = ?1 AND grantee_user_id IS NULL AND status = 'pending'
+          AND EXISTS (SELECT 1 FROM users
+                       WHERE email = ?1 AND deleted_at IS NULL AND email_verified_at IS NOT NULL)`,
     )
     .bind(email)
     .run();

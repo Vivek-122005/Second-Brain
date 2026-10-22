@@ -10,6 +10,8 @@ export class HttpError extends Error {
     public readonly title: string,
     public readonly detail?: string,
     public readonly extra: Partial<ProblemDetails> & Record<string, unknown> = {},
+    /** Extra response headers, e.g. `Retry-After` on 429. */
+    public readonly headers: Record<string, string> = {},
   ) {
     super(detail ?? title);
     this.name = 'HttpError';
@@ -33,7 +35,10 @@ export function problem(c: Context, err: HttpError): Response {
     ...(err.detail ? { detail: err.detail } : {}),
     ...err.extra,
   };
-  return c.body(JSON.stringify(body), err.status, { 'content-type': 'application/problem+json' });
+  return c.body(JSON.stringify(body), err.status, {
+    ...err.headers,
+    'content-type': 'application/problem+json',
+  });
 }
 
 /** Parses with Zod and converts failures into a 400 problem with field errors. */
