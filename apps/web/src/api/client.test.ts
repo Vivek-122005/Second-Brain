@@ -79,6 +79,20 @@ describe('createHttpClient', () => {
     });
   });
 
+  it('sends the post-sign-in destination with a magic-link request', async () => {
+    const fetch = vi.fn(async (_input: string, _init?: RequestInit) =>
+      Response.json({ sent: true }, { status: 202 }),
+    );
+    const api = createHttpClient({ fetch });
+    await api.requestMagicLink({ email: 'alex@example.com', next: '/oauth/authorize?client_id=c' });
+    const [url, init] = fetch.mock.calls[0] ?? [];
+    expect(url).toBe('/api/v1/auth/magic-link');
+    expect(JSON.parse(String(init?.body))).toEqual({
+      email: 'alex@example.com',
+      next: '/oauth/authorize?client_id=c',
+    });
+  });
+
   it('handles 204 No Content', async () => {
     const api = createHttpClient({ fetch: async () => new Response(null, { status: 204 }) });
     await expect(api.revokeKey('key_1')).resolves.toBeUndefined();

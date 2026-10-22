@@ -23,6 +23,7 @@ import type {
 import {
   GOOGLE_START_PATH,
   type AuthProviders,
+  type MagicLinkInput,
   type Passkey,
   type RenamePasskeyInput,
   type PasskeyLoginOptionsInput,
@@ -151,7 +152,7 @@ export interface ApiClient {
   deletePasskey(id: string): Promise<void>;
   /** Starts Google sign-in (a full-page redirect against a real server). */
   startGoogleSignIn(redirect: string): Promise<void>;
-  requestMagicLink(email: string): Promise<MagicLinkResponse>;
+  requestMagicLink(req: MagicLinkInput): Promise<MagicLinkResponse>;
   /** Opens a `dev_link` from the magic-link response (a full navigation against a real server). */
   followDevLink(link: string): Promise<void>;
   logout(): Promise<void>;
@@ -261,8 +262,8 @@ export function createHttpClient(opts: HttpClientOptions = {}): ApiClient {
     deletePasskey: (id) => request<void>('DELETE', `/auth/passkeys/${encodeURIComponent(id)}`),
     startGoogleSignIn: (redirect) =>
       openLink(`${baseUrl}${GOOGLE_START_PATH}${toQueryString({ redirect })}`),
-    requestMagicLink: (email) =>
-      request<MagicLinkResponse>('POST', '/auth/magic-link', { body: { email } }),
+    requestMagicLink: (req) =>
+      request<MagicLinkResponse>('POST', '/auth/magic-link', { body: req }),
     followDevLink: (link) => openLink(link),
     logout: () => request<void>('POST', '/auth/logout'),
     me: () => request<MeResponse>('GET', '/me'),

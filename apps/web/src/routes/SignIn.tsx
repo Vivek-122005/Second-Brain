@@ -88,7 +88,13 @@ export function SignInPage({ redirect }: { redirect?: string | undefined }) {
     // Against a real server this navigates away; the mock signs in directly.
     onSuccess: finish,
   });
-  const send = useMutation({ mutationFn: (e: string) => api.requestMagicLink(e) });
+  const send = useMutation({
+    // Carry the destination through the email so /auth/verify lands there (e.g. OAuth consent).
+    mutationFn: (e: string) =>
+      api.requestMagicLink(
+        destination.href === '/' ? { email: e } : { email: e, next: destination.href },
+      ),
+  });
   const follow = useMutation({
     mutationFn: (link: string) => api.followDevLink(link),
     onSuccess: finish,
