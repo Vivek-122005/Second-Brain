@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createMockApi } from '../api/mock';
 import { renderWithProviders } from '../test/render';
 import { SignInPage } from './SignIn';
@@ -21,5 +21,21 @@ describe('SignInPage', () => {
     await user.click(screen.getByRole('button', { name: 'Email me a link' }));
     expect(await screen.findByRole('heading', { name: 'Check your email' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open sign-in link' })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['/oauth/authorize?client_id=c&state=s', { next: '/oauth/authorize?client_id=c&state=s' }],
+    ['https://evil.example/phish', {}],
+    [undefined, {}],
+  ])('asks for a magic link that returns to %s only when it is safe', async (redirect, extra) => {
+    const user = userEvent.setup();
+    const { api } = createMockApi({ signedIn: false });
+    const spy = vi.spyOn(api, 'requestMagicLink');
+    renderWithProviders(<SignInPage redirect={redirect} />, { api, path: '/login' });
+
+    await user.type(await screen.findByLabelText('Email'), 'alex@example.com');
+    await user.click(screen.getByRole('button', { name: 'Email me a link' }));
+    await screen.findByRole('heading', { name: 'Check your email' });
+    expect(spy).toHaveBeenCalledWith({ email: 'alex@example.com', ...extra });
   });
 });

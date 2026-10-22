@@ -79,7 +79,7 @@ describe('mock API', () => {
   it('requires a session, and the dev magic link signs you in', async () => {
     const { api } = createMockApi({ signedIn: false });
     await expect(api.me()).rejects.toMatchObject({ status: 401 });
-    const link = await api.requestMagicLink('alex@example.com');
+    const link = await api.requestMagicLink({ email: 'alex@example.com' });
     expect(link.dev_link).toBeTruthy();
     await api.followDevLink(link.dev_link ?? '');
     await expect(api.me()).resolves.toMatchObject({ user: { email: 'alex@example.com' } });

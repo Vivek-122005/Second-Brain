@@ -22,6 +22,16 @@ export interface AuthProviders {
   magic_link: boolean;
 }
 
+/**
+ * POST /api/v1/auth/magic-link. Extends the schema's `MagicLinkRequest` with `next`: where
+ * /auth/verify sends you after signing in (same-origin only, checked again by the server).
+ * TODO(schema)
+ */
+export interface MagicLinkInput {
+  email: string;
+  next?: string;
+}
+
 /** POST /api/v1/auth/passkey/register/options (session auth). TODO(schema) */
 export interface PasskeyRegisterOptionsInput {
   /** Friendly name for the passkey, e.g. "MacBook Pro". */

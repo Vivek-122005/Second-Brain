@@ -696,7 +696,7 @@ export class MockServer {
       return new Response(null, { status: 204 });
     }
     if (method === 'POST' && path === '/auth/magic-link') {
-      const email = (body as { email?: unknown } | undefined)?.email;
+      const { email, next } = (body ?? {}) as { email?: unknown; next?: unknown };
       if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         throw new HttpProblem({
           type: 'https://second-brain.dev/problems/validation',
@@ -704,6 +704,14 @@ export class MockServer {
           status: 422,
           detail: 'Enter a valid email address.',
           errors: [{ path: 'email', message: 'Invalid email' }],
+        });
+      }
+      if (next !== undefined && typeof next !== 'string') {
+        throw new HttpProblem({
+          type: 'https://second-brain.dev/problems/validation',
+          title: 'Invalid input',
+          status: 422,
+          errors: [{ path: 'next', message: 'Expected a string' }],
         });
       }
       const token = randomHex(16);
