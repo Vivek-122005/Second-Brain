@@ -10,10 +10,13 @@ import type { NoteType } from '@second-brain/schema';
 export type {
   ApiKey,
   CheckOutput,
+  ConnectGitHubVaultResponse,
   ConnectInfo,
   CreateKeyResponse,
   DashboardResponse,
   DeviceRequestInfo,
+  DisconnectGitHubVaultResponse,
+  GitHubWebhookSetup,
   KeyScope,
   MagicLinkResponse,
   NoteDetail,
@@ -29,10 +32,14 @@ export type {
   SearchHit,
   SearchResponse,
   User,
+  VaultStatus,
+  VaultSyncDirection,
+  VaultWebhookStatus,
 } from '@second-brain/schema';
 
 import type {
   KeyScope,
+  VaultSyncDirection,
   MeResponse as SchemaMeResponse,
   SpaceSummary as SchemaSpaceSummary,
 } from '@second-brain/schema';
@@ -59,6 +66,16 @@ export interface CreateKeyInput {
   scopes?: KeyScope[];
   project?: string;
   expires_in_days?: number;
+}
+
+/** Body of POST /api/v1/spaces/:id/vault/github as the client sends it (see `CreateKeyInput`). */
+export interface ConnectGitHubVaultInput {
+  repo: string;
+  branch?: string;
+  token: string;
+  direction: VaultSyncDirection;
+  confirm_overwrite?: boolean;
+  create_webhook?: boolean;
 }
 
 /** Body of POST /api/v1/auth/device/approve as the client sends it (see `CreateKeyInput`). */
