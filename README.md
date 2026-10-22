@@ -74,6 +74,7 @@ Read more: [High-level design](docs/02-architecture/hld.md) · [Low-level design
 | Collaboration | [Sharing & multi-tenancy](docs/04-collaboration/sharing-and-tenancy.md) |
 | Delivery | [Roadmap](docs/05-delivery/roadmap.md) · [Engineering standards](docs/05-delivery/engineering-standards.md) |
 | Reference | [Notes on the reference design (BrainMCP)](docs/reference/brainmcp-reference.md) |
+| Runbooks | [Local development](docs/runbooks/local-dev.md) · [Keep a vault in GitHub (Obsidian, VS Code)](docs/runbooks/github-vault.md) |
 
 ## Planned tech stack
 

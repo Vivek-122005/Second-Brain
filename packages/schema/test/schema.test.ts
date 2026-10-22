@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ConnectGitHubVaultRequest,
   ContextInput,
   Decision,
   ProjectFrontmatter,
@@ -7,6 +8,30 @@ import {
   SearchInput,
   UpdateSpaceRequest,
 } from '../src';
+
+describe('GitHub vault connect request', () => {
+  const base = { repo: 'octo/notes', token: 'tok_0123456789', direction: 'push_managed' };
+
+  it('fills defaults and accepts nested branch names', () => {
+    expect(ConnectGitHubVaultRequest.parse(base)).toMatchObject({
+      confirm_overwrite: false,
+      create_webhook: true,
+    });
+    expect(ConnectGitHubVaultRequest.parse({ ...base, branch: 'vault/main' }).branch).toBe(
+      'vault/main',
+    );
+  });
+
+  it('rejects bad repos, branches and directions', () => {
+    expect(() => ConnectGitHubVaultRequest.parse({ ...base, repo: 'notes' })).toThrow(
+      /owner\/name/,
+    );
+    for (const branch of ['../x', 'a..b', '-x', 'x/', 'x.lock', 'a b']) {
+      expect(() => ConnectGitHubVaultRequest.parse({ ...base, branch })).toThrow();
+    }
+    expect(() => ConnectGitHubVaultRequest.parse({ ...base, direction: 'both' })).toThrow();
+  });
+});
 
 describe('frontmatter schemas', () => {
   it('fills defaults and keeps unknown keys', () => {
