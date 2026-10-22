@@ -1,5 +1,6 @@
 import { applyChanges, noteId, rebuildIndex } from '@second-brain/db';
 import type { SearchHit } from '@second-brain/schema';
+import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { workersAiEmbedder } from '../src/search/embedder';
 import {
@@ -8,7 +9,13 @@ import {
   MIN_SIMILARITY,
   type VectorHit,
 } from '../src/search/fusion';
-import { embedCatchUp, embedSpace, type Semantic } from '../src/search/semantic';
+import { withExecutionContext } from '../src/lib/defer';
+import {
+  embedCatchUp,
+  embedSpace,
+  scheduleSpaceEmbedding,
+  type Semantic,
+} from '../src/search/semantic';
 import { vectorFilter, vectorizeIndex } from '../src/search/vectors';
 import { callWith, FakeAi, FakeVectorize, semanticEnv } from './fakes';
 import { env, mcp, newUserWithKey } from './helpers';
@@ -237,6 +244,37 @@ describe('embedding pipeline', () => {
     await embedCatchUp(s.e, { maxChunks: 50 });
     expect(s.vec.idsFor(bigId)).toEqual([]);
     expect(s.vec.idsFor(await noteId(s.spaceId, 'topics/other.md')).length).toBe(1);
+  });
+
+  it('embeds after a GitHub sync only for semantic-enabled spaces', async () => {
+    const runDeferred = async (fn: () => void) => {
+      const ctx = createExecutionContext();
+      withExecutionContext(ctx, fn);
+      await waitOnExecutionContext(ctx);
+    };
+    const on = await setup({ semantic: true });
+    const off = await setup();
+    for (const s of [on, off]) {
+      await applyChanges(
+        env.DB,
+        s.spaceId,
+        { upserts: [{ path: 'topics/synced.md', content: AUTH_NOTE }], deletes: [] },
+        'sha1',
+      );
+      await runDeferred(() => scheduleSpaceEmbedding(s.e, s.spaceId, ['topics/synced.md']));
+    }
+    expect(on.vec.idsFor(await noteId(on.spaceId, 'topics/synced.md')).length).toBeGreaterThan(0);
+    expect(off.vec.vectors.size).toBe(0);
+
+    // After a full rebuild (paths = null) the whole space is scanned for changed hashes.
+    await applyChanges(
+      env.DB,
+      on.spaceId,
+      { upserts: [{ path: 'topics/later.md', content: DEPLOY_NOTE }], deletes: [] },
+      'sha2',
+    );
+    await runDeferred(() => scheduleSpaceEmbedding(on.e, on.spaceId, null));
+    expect(on.vec.idsFor(await noteId(on.spaceId, 'topics/later.md')).length).toBeGreaterThan(0);
   });
 
   it('re-embeds everything when the model changes', async () => {

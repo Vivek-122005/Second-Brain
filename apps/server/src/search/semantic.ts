@@ -212,6 +212,33 @@ export function scheduleEmbedding(
   );
 }
 
+/**
+ * Same as `scheduleEmbedding` for callers that only know the space id (GitHub sync). `paths` are
+ * the re-indexed paths; null after a full rebuild, which scans the whole space for changed hashes.
+ */
+export function scheduleSpaceEmbedding(
+  env: Env,
+  spaceId: string,
+  paths: string[] | null,
+  sem: Semantic | null = semanticFor(env),
+): void {
+  if (!sem) return;
+  defer(
+    (async () => {
+      try {
+        const row = await env.DB.prepare('SELECT semantic_enabled FROM spaces WHERE id = ?')
+          .bind(spaceId)
+          .first<{ semantic_enabled: number }>();
+        if (row?.semantic_enabled !== 1) return;
+        const noteIds = paths ? await Promise.all(paths.map((p) => noteId(spaceId, p))) : undefined;
+        await embedSpace(env.DB, sem, spaceId, { maxChunks: POST_WRITE_CHUNK_CAP, noteIds });
+      } catch (err) {
+        logFailure('embed.after-sync', spaceId, err);
+      }
+    })(),
+  );
+}
+
 /** Switches semantic search on or off for a space; on starts a backfill, off removes its vectors. */
 export async function setSemanticEnabled(
   env: Env,
