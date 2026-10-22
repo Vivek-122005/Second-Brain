@@ -4,6 +4,7 @@ import { type AppEnv, identify, requireScope } from './auth/principal';
 import type { Env } from './env';
 import { HttpError, problem } from './lib/http';
 import { handleMcp } from './mcp/server';
+import { bearerChallenge, oauthApiRoutes, oauthRoutes, purgeExpiredOAuth } from './oauth';
 import { apiRoutes } from './routes/api';
 import { authRoutes } from './routes/auth';
 import type { SpaceRow } from './services/spaces';
@@ -23,22 +24,29 @@ app.get('/health', (c) => c.json({ ok: true }));
 
 app.use('/api/*', identify);
 app.use('/mcp', identify);
+app.route('/', oauthRoutes);
 app.route('/api/v1/auth', authRoutes);
+app.route('/api/v1/oauth', oauthApiRoutes);
 app.route('/api/v1', apiRoutes);
 
-// MCP over Streamable HTTP (stateless). Requires an API key with at least the read scope.
+// MCP over Streamable HTTP (stateless). Requires an API key or an OAuth access token with at
+// least the read scope. The 401 challenge points clients at our OAuth metadata (RFC 9728).
 app.all('/mcp', async (c) => {
   const p = c.get('principal');
-  if (!p || p.via !== 'key') {
+  if (!p || (p.via !== 'key' && p.via !== 'oauth')) {
+    const sentToken = /^bearer /i.test(c.req.header('authorization') ?? '');
     return c.json(
       {
-        error: 'unauthorized',
+        error: sentToken ? 'invalid_token' : 'unauthorized',
         message:
-          'Send Authorization: Bearer <API key>. Create keys with `brain login` or in the web app.',
+          'Connect with OAuth, or send Authorization: Bearer <API key>. Create keys with `brain login` or in the web app.',
       },
       401,
       {
-        'www-authenticate': 'Bearer realm="second-brain"',
+        'www-authenticate': bearerChallenge(
+          new URL(c.req.url).origin,
+          sentToken ? 'invalid_token' : undefined,
+        ),
       },
     );
   }
@@ -93,5 +101,6 @@ export default {
   fetch: app.fetch,
   async scheduled(_controller, env, ctx) {
     ctx.waitUntil(rebuildAll(env));
+    ctx.waitUntil(purgeExpiredOAuth(env.DB));
   },
 } satisfies ExportedHandler<Env>;
