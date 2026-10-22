@@ -28,6 +28,26 @@ export interface Env {
   EMBEDDING_MODEL?: string;
   /** Max chunks the nightly catch-up job embeds per run (default 200). */
   SEMANTIC_CRON_CHUNK_CAP?: string;
+
+  /** WebAuthn relying-party ID: the site's registrable domain, e.g. `brain.example.com`. */
+  WEBAUTHN_RP_ID?: string;
+  /** WebAuthn relying-party name shown by the authenticator. */
+  WEBAUTHN_RP_NAME?: string;
+  /** Google OAuth client ID. Google sign-in is enabled when it and the secret are set. */
+  GOOGLE_CLIENT_ID?: string;
+  /** Secret: Google OAuth client secret. */
+  GOOGLE_CLIENT_SECRET?: string;
+
+  /** `off` disables rate limiting (tests only). Anything else, or unset, enables it. */
+  RATE_LIMITS?: string;
+  /** Requests per minute per IP and per email on /api/v1/auth/* (D1 fallback only). */
+  RATE_LIMIT_AUTH_PER_MIN?: string;
+  /** Requests per minute per key or user on /api/v1/* and /mcp (D1 fallback only). */
+  RATE_LIMIT_API_PER_MIN?: string;
+  /** Workers Rate Limiting binding for /api/v1/auth/*. Without it, a D1 counter is used. */
+  AUTH_RATE_LIMITER?: RateLimit;
+  /** Workers Rate Limiting binding for /api/v1/* and /mcp. */
+  API_RATE_LIMITER?: RateLimit;
 }
 
 export function isDev(env: Env): boolean {

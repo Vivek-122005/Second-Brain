@@ -6,9 +6,17 @@ import { upsertUserByEmail } from '../src/services/spaces';
 
 export { env };
 
-export async function call(input: string, init: RequestInit = {}): Promise<Response> {
+export async function call(
+  input: string,
+  init: RequestInit = {},
+  envOverrides: Partial<typeof env> = {},
+): Promise<Response> {
   const ctx = createExecutionContext();
-  const res = await worker.fetch(new Request(`http://app.test${input}`, init), env, ctx);
+  const res = await worker.fetch(
+    new Request(`http://app.test${input}`, init),
+    { ...env, ...envOverrides },
+    ctx,
+  );
   await waitOnExecutionContext(ctx);
   return res;
 }
@@ -21,6 +29,10 @@ export async function newUserWithKey(
 ) {
   counter += 1;
   const user = await upsertUserByEmail(env.DB, `user${counter}-${crypto.randomUUID()}@example.com`);
+  // Test users sign in as if by magic link, so their email counts as proven.
+  await env.DB.prepare('UPDATE users SET email_verified_at = ? WHERE id = ?')
+    .bind(Date.now(), user.id)
+    .run();
   const { key, secret } = await createKey(env.DB, env.KEY_PEPPER, {
     userId: user.id,
     label: 'test',

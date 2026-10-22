@@ -1,11 +1,14 @@
 import type {
   ApiKey,
+  ConnectGitHubVaultInput,
+  ConnectGitHubVaultResponse,
   ConnectInfo,
   CreateKeyInput,
   CreateKeyResponse,
   DashboardResponse,
   DeviceApproveInput,
   DeviceRequestInfo,
+  DisconnectGitHubVaultResponse,
   ListNotesParams,
   MagicLinkResponse,
   MeResponse,
@@ -19,6 +22,7 @@ import type {
   SaveNoteResponse,
   SearchParams,
   SearchResponse,
+  VaultStatus,
 } from './contract';
 import {
   GOOGLE_START_PATH,
@@ -46,8 +50,10 @@ export class ApiError extends Error {
   readonly detail: string | undefined;
   readonly type: string;
   readonly errors: { path: string; message: string }[];
+  /** RFC 9457 extension members, e.g. `repo_notes` on a vault connect conflict. */
+  readonly extensions: Record<string, unknown>;
 
-  constructor(problem: ProblemDetails) {
+  constructor(problem: ProblemDetails, extensions: Record<string, unknown> = {}) {
     super(problem.detail ? `${problem.title}: ${problem.detail}` : problem.title);
     this.name = 'ApiError';
     this.status = problem.status;
@@ -55,6 +61,7 @@ export class ApiError extends Error {
     this.detail = problem.detail;
     this.type = problem.type;
     this.errors = problem.errors ?? [];
+    this.extensions = extensions;
   }
 
   get isUnauthorized(): boolean {
@@ -71,6 +78,17 @@ export class ApiError extends Error {
 export function isApiError(err: unknown): err is ApiError {
   return err instanceof ApiError;
 }
+
+const PROBLEM_MEMBERS = new Set([
+  'type',
+  'title',
+  'status',
+  'detail',
+  'instance',
+  'errors',
+  'error',
+  'message',
+]);
 
 const STATUS_TITLES: Record<number, string> = {
   400: 'Bad request',
@@ -128,13 +146,19 @@ export async function parseErrorResponse(res: Response): Promise<ApiError> {
           isRecord(e) && typeof e.path === 'string' && typeof e.message === 'string',
       )
     : undefined;
-  return new ApiError({
-    type: typeof body.type === 'string' ? body.type : 'about:blank',
-    title,
-    status: typeof body.status === 'number' ? body.status : res.status,
-    ...(detail !== undefined ? { detail } : {}),
-    ...(errors ? { errors } : {}),
-  });
+  const extensions = Object.fromEntries(
+    Object.entries(body).filter(([k]) => !PROBLEM_MEMBERS.has(k)),
+  );
+  return new ApiError(
+    {
+      type: typeof body.type === 'string' ? body.type : 'about:blank',
+      title,
+      status: typeof body.status === 'number' ? body.status : res.status,
+      ...(detail !== undefined ? { detail } : {}),
+      ...(errors ? { errors } : {}),
+    },
+    extensions,
+  );
 }
 
 /** Everything the UI can ask of the server. The HTTP client and the mock both satisfy it. */
@@ -157,6 +181,17 @@ export interface ApiClient {
   followDevLink(link: string): Promise<void>;
   logout(): Promise<void>;
   me(): Promise<MeResponse>;
+  vaultStatus(spaceId: string): Promise<VaultStatus>;
+  /** Fails with 409 (`repo_notes` / `managed_notes`) until `confirm_overwrite` is set. */
+  connectGitHubVault(
+    spaceId: string,
+    req: ConnectGitHubVaultInput,
+  ): Promise<ConnectGitHubVaultResponse>;
+  /** `skipImport` switches back without copying the repository (when it can't be read). */
+  disconnectGitHubVault(
+    spaceId: string,
+    opts?: { skipImport?: boolean },
+  ): Promise<DisconnectGitHubVaultResponse>;
   dashboard(): Promise<DashboardResponse>;
   listNotes(params?: ListNotesParams): Promise<Page<NoteSummary>>;
   getNote(path: string): Promise<NoteDetail>;
@@ -267,6 +302,20 @@ export function createHttpClient(opts: HttpClientOptions = {}): ApiClient {
     followDevLink: (link) => openLink(link),
     logout: () => request<void>('POST', '/auth/logout'),
     me: () => request<MeResponse>('GET', '/me'),
+    vaultStatus: (spaceId) =>
+      request<VaultStatus>('GET', `/spaces/${encodeURIComponent(spaceId)}/vault`),
+    connectGitHubVault: (spaceId, req) =>
+      request<ConnectGitHubVaultResponse>(
+        'POST',
+        `/spaces/${encodeURIComponent(spaceId)}/vault/github`,
+        { body: req },
+      ),
+    disconnectGitHubVault: (spaceId, opts = {}) =>
+      request<DisconnectGitHubVaultResponse>(
+        'DELETE',
+        `/spaces/${encodeURIComponent(spaceId)}/vault/github`,
+        opts.skipImport ? { query: { skip_import: 'true' } } : {},
+      ),
     dashboard: () => request<DashboardResponse>('GET', '/dashboard'),
     listNotes: (params = {}) =>
       request<Page<NoteSummary>>('GET', '/notes', {

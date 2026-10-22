@@ -27,6 +27,7 @@ export const qk = {
   projects: (status?: ProjectStatus) => ['projects', status ?? 'all'] as const,
   keys: ['keys'] as const,
   passkeys: ['passkeys'] as const,
+  vault: (spaceId: string) => ['vault', spaceId] as const,
   connect: ['connect'] as const,
   device: (code: string) => ['device', code] as const,
 };

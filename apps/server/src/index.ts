@@ -1,9 +1,12 @@
 import { rebuildIndex } from '@second-brain/db';
 import { Hono } from 'hono';
+import { pruneOidcFlows } from './auth/oidc';
+import { pruneChallenges } from './auth/passkeys';
 import { type AppEnv, identify, requireScope } from './auth/principal';
 import type { Env } from './env';
 import { withExecutionContext } from './lib/defer';
 import { HttpError, problem } from './lib/http';
+import { apiRateLimit, authRateLimit, pruneRateLimits } from './lib/ratelimit';
 import { handleMcp } from './mcp/server';
 import { bearerChallenge, oauthApiRoutes, oauthRoutes, purgeExpiredOAuth } from './oauth';
 import { apiRoutes } from './routes/api';
@@ -38,6 +41,10 @@ app.get('/health', (c) => c.json({ ok: true }));
 
 app.use('/api/*', identify);
 app.use('/mcp', identify);
+// Strict per-IP limit on sign-in endpoints; per key/principal limit on the API and MCP.
+app.use('/api/v1/auth/*', authRateLimit);
+app.use('/api/*', apiRateLimit);
+app.use('/mcp', apiRateLimit);
 app.route('/', oauthRoutes);
 // Reads of a GitHub space trigger a cheap catch-up when its last sync check is stale.
 app.use('/api/*', driftCheck);
@@ -133,6 +140,9 @@ export default {
             }),
           );
         }),
+    );
+    ctx.waitUntil(
+      Promise.all([pruneChallenges(env.DB), pruneOidcFlows(env.DB), pruneRateLimits(env.DB)]),
     );
     ctx.waitUntil(purgeExpiredOAuth(env.DB));
   },

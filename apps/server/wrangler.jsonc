@@ -41,12 +41,30 @@
   // Nightly full index rebuild, embedding catch-up and hygiene (HLD §4.4).
   "triggers": { "crons": ["17 3 * * *"] },
 
+  // Rate limits (ADR-0007): strict per IP/email on /api/v1/auth/*, per key on /api/v1/* and /mcp.
+  // Not inherited by environments, so each env below repeats them with its own namespace IDs.
+  "ratelimits": [
+    {
+      "name": "AUTH_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 30, "period": 60 },
+    },
+    {
+      "name": "API_RATE_LIMITER",
+      "namespace_id": "1002",
+      "simple": { "limit": 600, "period": 60 },
+    },
+  ],
+
   "vars": {
     "ENVIRONMENT": "development",
     "SIGNUP_MODE": "allowlist",
     "ALLOWED_EMAILS": "",
     "APP_ORIGINS": "http://localhost:8787,http://localhost:5173",
     "EMAIL_FROM": "Second Brain <login@example.com>",
+    // Empty in development: the RP ID falls back to the request's host (localhost).
+    "WEBAUTHN_RP_ID": "",
+    "WEBAUTHN_RP_NAME": "Second Brain",
   },
 
   "env": {
@@ -58,7 +76,22 @@
         "ALLOWED_EMAILS": "",
         "APP_ORIGINS": "",
         "EMAIL_FROM": "Second Brain <login@example.com>",
+        // Required for passkeys outside development: the site's host, e.g. "brain.example.com".
+        "WEBAUTHN_RP_ID": "",
+        "WEBAUTHN_RP_NAME": "Second Brain",
       },
+      "ratelimits": [
+        {
+          "name": "AUTH_RATE_LIMITER",
+          "namespace_id": "2001",
+          "simple": { "limit": 30, "period": 60 },
+        },
+        {
+          "name": "API_RATE_LIMITER",
+          "namespace_id": "2002",
+          "simple": { "limit": 600, "period": 60 },
+        },
+      ],
       "d1_databases": [
         {
           "binding": "DB",
@@ -79,7 +112,22 @@
         "ALLOWED_EMAILS": "",
         "APP_ORIGINS": "",
         "EMAIL_FROM": "Second Brain <login@example.com>",
+        // Required for passkeys outside development: the site's host, e.g. "brain.example.com".
+        "WEBAUTHN_RP_ID": "",
+        "WEBAUTHN_RP_NAME": "Second Brain",
       },
+      "ratelimits": [
+        {
+          "name": "AUTH_RATE_LIMITER",
+          "namespace_id": "3001",
+          "simple": { "limit": 30, "period": 60 },
+        },
+        {
+          "name": "API_RATE_LIMITER",
+          "namespace_id": "3002",
+          "simple": { "limit": 600, "period": 60 },
+        },
+      ],
       "d1_databases": [
         {
           "binding": "DB",
