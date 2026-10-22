@@ -341,6 +341,28 @@ export interface ImportResponse {
   commit_sha: string | null;
 }
 
+// ── Connected apps (OAuth 2.1 for MCP clients) ────────────────────────────
+/**
+ * An MCP client the user approved on the OAuth consent screen. Disconnecting it revokes every
+ * access and refresh token the client holds.
+ */
+export interface OAuthGrant {
+  id: string;
+  client_id: string;
+  /** Name the client registered with. It is self-declared, so show `redirect_hosts` next to it. */
+  client_name: string;
+  client_uri: string | null;
+  /** Hosts of the client's registered redirect URIs, e.g. `claude.ai` or `localhost`. */
+  redirect_hosts: string[];
+  scopes: KeyScope[];
+  /** The space the client may use. */
+  space_id: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+/** GET /api/v1/oauth/grants → `OAuthGrantsResponse` · DELETE /api/v1/oauth/grants/:id → 204 */
+export type OAuthGrantsResponse = Page<OAuthGrant>;
+
 // ── Vault: GitHub sync ─────────────────────────────────────────────────────
 /** `owner/name` of a GitHub repository. */
 export const GitHubRepoName = z
