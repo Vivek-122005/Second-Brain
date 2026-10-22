@@ -1,0 +1,471 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens. Everything visual reads from these CSS variables so light/dark (system or manual
+ * override via [data-theme]) is a single swap. Values follow Apple's system colors, adjusted where
+ * needed to meet WCAG 2.2 AA (e.g. accent text is darker than #007AFF, which is only 4.0:1 on white).
+ */
+:root {
+  color-scheme: light;
+  --sb-canvas: #ffffff;
+  --sb-grouped: #f2f2f7;
+  --sb-cell: #ffffff;
+  --sb-elevated: #ffffff;
+  --sb-sidebar: rgb(236 236 240 / 0.78);
+  --sb-sidebar-solid: #ececf0;
+  --sb-label: #1d1d1f;
+  --sb-label-secondary: #6e6e73;
+  --sb-label-tertiary: #8e8e93;
+  --sb-separator: rgb(60 60 67 / 0.16);
+  --sb-separator-strong: rgb(60 60 67 / 0.29);
+  --sb-field-border: #b9b9be;
+  --sb-fill: rgb(118 118 128 / 0.12);
+  --sb-fill-strong: rgb(118 118 128 / 0.2);
+  --sb-hover: rgb(0 0 0 / 0.04);
+  --sb-accent: #007aff;
+  --sb-accent-fill: #0071e3;
+  --sb-accent-text: #0066cc;
+  --sb-accent-tint: rgb(0 122 255 / 0.12);
+  --sb-on-accent: #ffffff;
+  --sb-red: #d70015;
+  --sb-red-tint: rgb(255 59 48 / 0.1);
+  --sb-green: #1e7d35;
+  --sb-green-tint: rgb(52 199 89 / 0.14);
+  --sb-orange: #b23d00;
+  --sb-orange-tint: rgb(255 149 0 / 0.16);
+  --sb-gray-tint: rgb(142 142 147 / 0.16);
+  --sb-code-bg: rgb(118 118 128 / 0.1);
+  --sb-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
+  --sb-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 6px 20px rgb(0 0 0 / 0.06);
+  --sb-shadow-lg: 0 2px 6px rgb(0 0 0 / 0.06), 0 24px 64px rgb(0 0 0 / 0.16);
+  --sb-scrim: rgb(0 0 0 / 0.24);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --sb-canvas: #1c1c1e;
+    --sb-grouped: #000000;
+    --sb-cell: #1c1c1e;
+    --sb-elevated: #2c2c2e;
+    --sb-sidebar: rgb(38 38 41 / 0.78);
+    --sb-sidebar-solid: #262629;
+    --sb-label: #f5f5f7;
+    --sb-label-secondary: #a1a1a6;
+    --sb-label-tertiary: #6e6e73;
+    --sb-separator: rgb(84 84 88 / 0.5);
+    --sb-separator-strong: rgb(84 84 88 / 0.8);
+    --sb-field-border: #5a5a5f;
+    --sb-fill: rgb(118 118 128 / 0.24);
+    --sb-fill-strong: rgb(118 118 128 / 0.36);
+    --sb-hover: rgb(255 255 255 / 0.05);
+    --sb-accent: #0a84ff;
+    --sb-accent-fill: #0071e3;
+    --sb-accent-text: #4aa3ff;
+    --sb-accent-tint: rgb(10 132 255 / 0.22);
+    --sb-red: #ff6961;
+    --sb-red-tint: rgb(255 69 58 / 0.18);
+    --sb-green: #30d158;
+    --sb-green-tint: rgb(48 209 88 / 0.18);
+    --sb-orange: #ffb340;
+    --sb-orange-tint: rgb(255 159 10 / 0.2);
+    --sb-gray-tint: rgb(142 142 147 / 0.24);
+    --sb-code-bg: rgb(118 118 128 / 0.2);
+    --sb-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+    --sb-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 20px rgb(0 0 0 / 0.3);
+    --sb-shadow-lg: 0 2px 6px rgb(0 0 0 / 0.3), 0 24px 64px rgb(0 0 0 / 0.5);
+    --sb-scrim: rgb(0 0 0 / 0.5);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --sb-canvas: #1c1c1e;
+  --sb-grouped: #000000;
+  --sb-cell: #1c1c1e;
+  --sb-elevated: #2c2c2e;
+  --sb-sidebar: rgb(38 38 41 / 0.78);
+  --sb-sidebar-solid: #262629;
+  --sb-label: #f5f5f7;
+  --sb-label-secondary: #a1a1a6;
+  --sb-label-tertiary: #6e6e73;
+  --sb-separator: rgb(84 84 88 / 0.5);
+  --sb-separator-strong: rgb(84 84 88 / 0.8);
+  --sb-field-border: #5a5a5f;
+  --sb-fill: rgb(118 118 128 / 0.24);
+  --sb-fill-strong: rgb(118 118 128 / 0.36);
+  --sb-hover: rgb(255 255 255 / 0.05);
+  --sb-accent: #0a84ff;
+  --sb-accent-fill: #0071e3;
+  --sb-accent-text: #4aa3ff;
+  --sb-accent-tint: rgb(10 132 255 / 0.22);
+  --sb-red: #ff6961;
+  --sb-red-tint: rgb(255 69 58 / 0.18);
+  --sb-green: #30d158;
+  --sb-green-tint: rgb(48 209 88 / 0.18);
+  --sb-orange: #ffb340;
+  --sb-orange-tint: rgb(255 159 10 / 0.2);
+  --sb-gray-tint: rgb(142 142 147 / 0.24);
+  --sb-code-bg: rgb(118 118 128 / 0.2);
+  --sb-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+  --sb-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 20px rgb(0 0 0 / 0.3);
+  --sb-shadow-lg: 0 2px 6px rgb(0 0 0 / 0.3), 0 24px 64px rgb(0 0 0 / 0.5);
+  --sb-scrim: rgb(0 0 0 / 0.5);
+}
+
+@theme inline {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-mono:
+    ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, 'Cascadia Mono', Consolas, monospace;
+
+  --color-canvas: var(--sb-canvas);
+  --color-grouped: var(--sb-grouped);
+  --color-cell: var(--sb-cell);
+  --color-elevated: var(--sb-elevated);
+  --color-sidebar: var(--sb-sidebar);
+  --color-sidebar-solid: var(--sb-sidebar-solid);
+  --color-label: var(--sb-label);
+  --color-label-secondary: var(--sb-label-secondary);
+  --color-label-tertiary: var(--sb-label-tertiary);
+  --color-separator: var(--sb-separator);
+  --color-separator-strong: var(--sb-separator-strong);
+  --color-field-border: var(--sb-field-border);
+  --color-fill: var(--sb-fill);
+  --color-fill-strong: var(--sb-fill-strong);
+  --color-hover: var(--sb-hover);
+  --color-accent: var(--sb-accent);
+  --color-accent-fill: var(--sb-accent-fill);
+  --color-accent-text: var(--sb-accent-text);
+  --color-accent-tint: var(--sb-accent-tint);
+  --color-on-accent: var(--sb-on-accent);
+  --color-red: var(--sb-red);
+  --color-red-tint: var(--sb-red-tint);
+  --color-green: var(--sb-green);
+  --color-green-tint: var(--sb-green-tint);
+  --color-orange: var(--sb-orange);
+  --color-orange-tint: var(--sb-orange-tint);
+  --color-gray-tint: var(--sb-gray-tint);
+  --color-code: var(--sb-code-bg);
+  --color-scrim: var(--sb-scrim);
+
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-sheet: 14px;
+
+  --shadow-soft: var(--sb-shadow-sm);
+  --shadow-card: var(--sb-shadow);
+  --shadow-sheet: var(--sb-shadow-lg);
+
+  --text-body: 15px;
+  --text-body--line-height: 1.55;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--sb-label);
+    background: var(--sb-canvas);
+  }
+
+  :focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--sb-accent) 60%, transparent);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--sb-accent) 28%, transparent);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--sb-label-secondary);
+    opacity: 1;
+  }
+
+  button {
+    cursor: default;
+  }
+}
+
+/* Hairline separators: 0.5px on high-density screens, 1px elsewhere. */
+.hairline-b {
+  box-shadow: inset 0 -1px 0 var(--sb-separator);
+}
+.hairline-t {
+  box-shadow: inset 0 1px 0 var(--sb-separator);
+}
+.hairline-r {
+  box-shadow: inset -1px 0 0 var(--sb-separator);
+}
+@media (min-resolution: 2dppx) {
+  .hairline-b {
+    box-shadow: inset 0 -0.5px 0 var(--sb-separator-strong);
+  }
+  .hairline-t {
+    box-shadow: inset 0 0.5px 0 var(--sb-separator-strong);
+  }
+  .hairline-r {
+    box-shadow: inset -0.5px 0 0 var(--sb-separator-strong);
+  }
+}
+
+/* Vibrancy-like translucent material for the sidebar and toolbars. */
+.material {
+  background: var(--sb-sidebar);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .material {
+    background: var(--sb-sidebar-solid);
+  }
+}
+
+/* Motion: short, quiet, and off when the user asks for reduced motion. */
+@keyframes sb-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes sb-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes sb-slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: none;
+  }
+}
+.animate-fade {
+  animation: sb-fade-in 160ms ease-out;
+}
+.animate-sheet {
+  animation: sb-sheet-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.animate-drawer {
+  animation: sb-slide-in-left 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Rendered Markdown. Hand-tuned rather than a typography plugin to keep the Apple Notes feel. */
+.prose-note {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--sb-label);
+  overflow-wrap: anywhere;
+}
+.prose-note > :first-child {
+  margin-top: 0;
+}
+.prose-note h1,
+.prose-note h2,
+.prose-note h3,
+.prose-note h4 {
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  margin: 1.6em 0 0.5em;
+}
+.prose-note h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.prose-note h2 {
+  font-size: 1.3rem;
+}
+.prose-note h3 {
+  font-size: 1.1rem;
+}
+.prose-note h4 {
+  font-size: 1rem;
+}
+.prose-note p,
+.prose-note ul,
+.prose-note ol,
+.prose-note blockquote,
+.prose-note pre,
+.prose-note table {
+  margin: 0 0 0.9em;
+}
+.prose-note ul,
+.prose-note ol {
+  padding-left: 1.4em;
+}
+.prose-note ul {
+  list-style: disc;
+}
+.prose-note ol {
+  list-style: decimal;
+}
+.prose-note li {
+  margin: 0.2em 0;
+}
+.prose-note li > ul,
+.prose-note li > ol {
+  margin: 0.2em 0;
+}
+.prose-note ul.contains-task-list {
+  list-style: none;
+  padding-left: 0.2em;
+}
+.prose-note .task-list-item input {
+  margin-right: 0.5em;
+  accent-color: var(--sb-accent);
+}
+.prose-note a {
+  color: var(--sb-accent-text);
+  text-decoration: none;
+}
+.prose-note a:hover {
+  text-decoration: underline;
+}
+.prose-note a.wikilink {
+  color: var(--sb-accent-text);
+  background: var(--sb-accent-tint);
+  border-radius: 4px;
+  padding: 0 0.2em;
+}
+.prose-note a.wikilink-unresolved {
+  color: var(--sb-label-secondary);
+  background: transparent;
+  text-decoration: underline dashed;
+  text-underline-offset: 3px;
+}
+.prose-note blockquote {
+  border-left: 3px solid var(--sb-separator-strong);
+  padding-left: 1em;
+  color: var(--sb-label-secondary);
+}
+.prose-note code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--sb-code-bg);
+  border-radius: 5px;
+  padding: 0.1em 0.35em;
+}
+.prose-note pre {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+  background: var(--sb-code-bg);
+  border-radius: 10px;
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+.prose-note pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+.prose-note hr {
+  border: 0;
+  height: 1px;
+  background: var(--sb-separator);
+  margin: 1.6em 0;
+}
+.prose-note table {
+  border-collapse: collapse;
+  font-size: 14px;
+  display: block;
+  overflow-x: auto;
+}
+.prose-note th,
+.prose-note td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--sb-separator);
+  text-align: left;
+}
+.prose-note th {
+  font-weight: 600;
+}
+.prose-note img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+/* CodeMirror: let the editor inherit our tokens. */
+.cm-editor {
+  height: 100%;
+  font-size: 14px;
+}
+.cm-editor.cm-focused {
+  outline: none;
+}
+.cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.6;
+}
+
+/* cmdk palette */
+[cmdk-group-heading] {
+  padding: 8px 12px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sb-label-secondary);
+}
+[cmdk-item] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  margin: 0 6px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--sb-label);
+  cursor: default;
+  user-select: none;
+}
+[cmdk-item][data-selected='true'] {
+  background: var(--sb-accent-fill);
+  color: var(--sb-on-accent);
+}
+[cmdk-item][data-selected='true'] .cmdk-sub {
+  color: rgb(255 255 255 / 0.85);
+}
+[cmdk-empty] {
+  padding: 24px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--sb-label-secondary);
+}
+
+mark.hit {
+  background: color-mix(in srgb, #ffd60a 45%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
