@@ -6,6 +6,7 @@ import { HttpError, problem } from './lib/http';
 import { handleMcp } from './mcp/server';
 import { apiRoutes } from './routes/api';
 import { authRoutes } from './routes/auth';
+import { grantRoutes } from './routes/grants';
 import type { SpaceRow } from './services/spaces';
 import { vaultFor } from './vault';
 
@@ -25,6 +26,7 @@ app.use('/api/*', identify);
 app.use('/mcp', identify);
 app.route('/api/v1/auth', authRoutes);
 app.route('/api/v1', apiRoutes);
+app.route('/api/v1', grantRoutes);
 
 // MCP over Streamable HTTP (stateless). Requires an API key with at least the read scope.
 app.all('/mcp', async (c) => {

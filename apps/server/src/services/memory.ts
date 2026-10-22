@@ -40,7 +40,9 @@ import type {
   SaveInput,
   SaveOutput,
 } from '@second-brain/schema';
-import { checkProject, type Principal, requireScope } from '../auth/principal';
+import { checkProject, type Principal, spaceFor } from '../auth/principal';
+import { authorize, can, readScope, withSource } from '../authz';
+import { authorizeChanges } from '../authz/writes';
 import type { Env } from '../env';
 import { badRequest } from '../lib/http';
 import type { FileChange } from '../vault';
@@ -49,7 +51,7 @@ import { commitMeta, commitWithRetry } from './notes';
 import type { SpaceRow } from './spaces';
 
 export function envelope<T>(
-  space: SpaceRow,
+  space: Pick<SpaceRow, 'id'>,
   data: T,
   meta: { truncated?: boolean; tokens?: number } = {},
 ): Envelope<T> {
@@ -77,29 +79,50 @@ const stringList = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
 
 // ── brain_context (FR-SES-01/02) ───────────────────────────────────────────
+/**
+ * Context comes from one space: `space_id` when given, else the space holding the project note
+ * (your default space first, then spaces shared into your agent context), else your default
+ * space. Active projects span every space in scope unless `include_shared` is false.
+ */
 export async function context(
   env: Env,
   p: Principal,
-  space: SpaceRow,
   input: ContextInput,
 ): Promise<Envelope<ContextOutput>> {
   const project = input.project ?? p.project ?? null;
   checkProject(p, project);
-  const spaceIds = [space.id];
+  const target = input.space_id ? spaceFor(p, input.space_id) : null;
+  const wide = target
+    ? readScope(p, { spaceId: target.id })
+    : readScope(p, { ownOnly: !input.include_shared });
 
-  const [projectRow, decisions, sessions, active] = await Promise.all([
-    project ? getNote(env.DB, spaceIds, projectPath(project)) : Promise.resolve(null),
-    recentDecisions(env.DB, spaceIds, { project: project ?? undefined, limit: 5 }),
-    recentSessionNotes(env.DB, spaceIds, { project: project ?? undefined, limit: 3 }),
-    listProjects(env.DB, spaceIds, 'active'),
+  let projectRow = null;
+  if (project) {
+    const path = projectPath(project);
+    projectRow = target
+      ? await getNote(env.DB, wide, path)
+      : ((await getNote(env.DB, readScope(p, { spaceId: p.defaultSpace.id }), path)) ??
+        (await getNote(env.DB, wide, path)));
+  }
+  const space = projectRow ? spaceFor(p, projectRow.space_id) : (target ?? p.defaultSpace);
+  const scope = readScope(p, { spaceId: space.id });
+
+  const [decisions, sessions, active] = await Promise.all([
+    recentDecisions(env.DB, scope, { project: project ?? undefined, limit: 5 }),
+    recentSessionNotes(env.DB, scope, { project: project ?? undefined, limit: 3 }),
+    listProjects(env.DB, wide, 'active'),
   ]);
 
+  // The session is logged where the caller may write; a viewer's session stays in their own space.
+  const sessionSpace = can(p, 'note.write', { spaceId: space.id, project })
+    ? space
+    : p.defaultSpace;
   const sessionId = newId('ses');
   await env.DB.prepare(
     `INSERT INTO agent_sessions (id, space_id, project_slug, user_id, key_id, client, status, opened_at)
      VALUES (?, ?, ?, ?, ?, ?, 'open', ?)`,
   )
-    .bind(sessionId, space.id, project, p.userId, p.keyId, p.client, Date.now())
+    .bind(sessionId, sessionSpace.id, project, p.userId, p.keyId, p.client, Date.now())
     .run();
 
   let projectOut: ContextOutput['project'] = null;
@@ -113,20 +136,23 @@ export async function context(
       body: projectRow.body.trim(),
     };
     if (typeof fm.goal === 'string') projectOut.goal = fm.goal;
+    projectOut = withSource(p, space.id, projectOut);
   }
 
   const data: ContextOutput = {
     project: projectOut,
-    decisions: decisions.map((d) => ({
-      id: d.id,
-      title: d.title,
-      date: d.date,
-      rationale: d.rationale,
-      ...(d.project_slug ? { project: d.project_slug } : {}),
-    })),
+    decisions: decisions.map((d) =>
+      withSource(p, d.space_id, {
+        id: d.id,
+        title: d.title,
+        date: d.date,
+        rationale: d.rationale,
+        ...(d.project_slug ? { project: d.project_slug } : {}),
+      }),
+    ),
     sessions: sessions.map((s) => {
       const fm = safeJson(s.frontmatter);
-      return {
+      return withSource(p, s.space_id, {
         id: typeof fm.id === 'string' ? fm.id : s.path,
         date:
           typeof fm.saved === 'string'
@@ -135,12 +161,18 @@ export async function context(
         summary: typeof fm.summary === 'string' ? fm.summary : '',
         next: stringList(fm.next),
         path: s.path,
-      };
+      });
     }),
     active_projects: active
-      .filter((a) => a.slug !== project)
+      .filter((a) => !(a.slug === project && a.space_id === space.id))
       .slice(0, 10)
-      .map((a) => ({ slug: a.slug, title: a.title, ...(a.next ? { next: a.next } : {}) })),
+      .map((a) =>
+        withSource(p, a.space_id, {
+          slug: a.slug,
+          title: a.title,
+          ...(a.next ? { next: a.next } : {}),
+        }),
+      ),
     session_id: sessionId,
   };
   if (project && !projectRow) {
@@ -160,18 +192,21 @@ const TOPIC_ROOTS = ['topics/', 'inbox/', 'notes/'];
 export async function save(
   env: Env,
   p: Principal,
-  space: SpaceRow,
   rawInput: SaveInput,
 ): Promise<Envelope<SaveOutput>> {
-  requireScope(p, 'write');
   // Second redaction pass on the server, whatever the client did (security.md, LLD §4.4).
   const { value: input } = redactDeep(rawInput);
 
-  const session = await env.DB.prepare('SELECT * FROM agent_sessions WHERE id = ? AND space_id = ?')
-    .bind(input.session_id, space.id)
+  const session = await env.DB.prepare('SELECT * FROM agent_sessions WHERE id = ? AND user_id = ?')
+    .bind(input.session_id, p.userId)
     .first<AgentSessionRow>();
+  // The space brain_context opened the session in, unless the caller names one.
+  const space = spaceFor(p, input.space_id ?? session?.space_id);
   const project = input.project ?? session?.project_slug ?? p.project ?? null;
   checkProject(p, project);
+  authorize(p, 'note.write', { spaceId: space.id, project });
+  if (input.decisions.some((d) => d.supersedes))
+    authorize(p, 'decision.supersede', { spaceId: space.id, project });
 
   const topicPaths = input.topic_updates.map((t) => {
     let path: string;
@@ -295,6 +330,7 @@ export async function save(
     );
 
     const fileChanges: FileChange[] = [...changes].map(([path, content]) => ({ path, content }));
+    await authorizeChanges(env, p, space.id, fileChanges);
     return {
       changes: fileChanges,
       meta: commitMeta(p, `Session: ${input.summary}`, {
