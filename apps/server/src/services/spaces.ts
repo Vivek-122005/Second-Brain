@@ -231,6 +231,7 @@ export function toSpaceSummary(s: ReadableSpace, userId: string): SpaceSummary {
     kind: s.kind,
     role: own ? 'owner' : (top ?? 'viewer'),
     vault: { provider: s.vault_provider, repo: s.vault_repo },
+    semantic_enabled: s.semantic_enabled === 1,
     ...(own ? {} : { source: { space: s.id, space_name: s.name, owner: s.owner_email } }),
     ...(!own && s.access.role === null ? { projects } : {}),
   };

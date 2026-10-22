@@ -111,7 +111,8 @@ CREATE TABLE decisions (id TEXT, space_id TEXT, project_id TEXT, title TEXT, rat
 CREATE TABLE sessions (id TEXT PRIMARY KEY, space_id TEXT, project_id TEXT, user_id TEXT, key_id TEXT,
                       status TEXT CHECK(status IN ('open','saved','abandoned')), summary TEXT,
                       opened_at INTEGER, saved_at INTEGER, note_path TEXT);
-CREATE TABLE embeddings_meta (note_id TEXT PRIMARY KEY, content_hash TEXT, model TEXT, embedded_at INTEGER);
+CREATE TABLE embeddings_meta (note_id TEXT PRIMARY KEY, space_id TEXT, content_hash TEXT, model TEXT,
+                      chunk_count INTEGER, embedded_at INTEGER);   -- vectors are '<note_id>:<ord>', ord < chunk_count
 CREATE TABLE sync_state (space_id TEXT PRIMARY KEY, last_indexed_sha TEXT, last_full_rebuild INTEGER);
 CREATE TABLE activity_events (id TEXT PRIMARY KEY, space_id TEXT, session_id TEXT, key_id TEXT,
                       tool TEXT, args_redacted TEXT, at INTEGER);   -- hot window ≤ 14 days
@@ -158,7 +159,7 @@ WHERE chunks_fts MATCH ?q AND c.space_id IN (/*readable set*/) AND (/*project sc
 ORDER BY s LIMIT limit*4
 → dedupe best chunk per note → if hybrid: RRF( fts_ranks, vector_ranks , k=60 ) → top limit
 ```
-The vector query uses the same `space_id` metadata filter in Vectorize. Results below `min_similarity=0.35` are dropped before fusion.
+The vector query uses the same `space_id` metadata filter in Vectorize (plus `project` and `type`). Results below `min_similarity=0.35` are dropped before fusion, and the remaining chunk ids are re-checked in D1 with the caller's read scope (`readScope` tokens, the same `IN_SCOPE` predicate as keyword search, so a project-level grant only matches that project) before fusion. The vector index is never the permission boundary. Hits from shared spaces carry `source`. `mode` defaults to `hybrid` when a searched space has `semantic_enabled`; responses carry `semantic: used | disabled | unavailable`, and any AI/Vectorize error degrades to keyword (`unavailable`). Code: `apps/server/src/search/` (`embedder.ts`, `vectors.ts`, `semantic.ts`, `fusion.ts`, `service.ts`).
 
 ### 4.3 Token budgeter
 Estimate tokens at chars/4 (calibrated per model family). Fill the response in priority order: project header, `next`, latest 5 decisions, latest 3 sessions, active projects. When over budget, drop the oldest session first, then the oldest decision, then truncate the project body tail. Set `_meta.truncated=true`.

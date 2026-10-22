@@ -116,17 +116,31 @@ export interface SaveOutput {
 }
 
 // ── brain_search ───────────────────────────────────────────────────────────
+export const SearchMode = z.enum(['hybrid', 'keyword']);
+export type SearchMode = z.infer<typeof SearchMode>;
+
 export const SearchInput = z.object({
   query: z.string().min(1).max(500),
   types: z.array(NoteType).optional(),
   project: projectSlug.optional(),
   limit: z.number().int().min(1).max(50).default(8),
   include_sessions: z.boolean().default(false),
-  mode: z.enum(['hybrid', 'keyword']).default('keyword'),
+  /**
+   * `hybrid` fuses keyword and semantic results (ADR-0004); `keyword` is FTS only. When omitted the
+   * server picks `hybrid` if semantic search is enabled for a searched space, else `keyword`.
+   */
+  mode: SearchMode.optional(),
   /** Search one space only. Omitted = every space in your context. */
   space_id: spaceId.optional(),
 });
 export type SearchInput = z.infer<typeof SearchInput>;
+
+/**
+ * Whether the semantic layer took part in a search: `used` (vector hits were fused), `disabled`
+ * (off for the searched spaces, or keyword mode was asked for) or `unavailable` (on, but the
+ * embedding model or vector index failed or is not bound, so the search fell back to keyword).
+ */
+export type SemanticStatus = 'used' | 'disabled' | 'unavailable';
 
 export interface SearchHit {
   path: string;

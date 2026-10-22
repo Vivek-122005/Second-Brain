@@ -32,7 +32,13 @@
     },
   ],
 
-  // Nightly full index rebuild and hygiene (HLD §4.4).
+  // Optional semantic layer (ADR-0004): Workers AI embeddings + a Vectorize index (768-d, cosine),
+  // bound in every deployed environment below (`ai`, `vectorize`). Neither has a local emulator,
+  // so local dev deliberately leaves them out: search runs keyword-only and reports
+  // `semantic: "unavailable"`, and no Cloudflare account is needed. Create each index once per
+  // environment (docs/runbooks/deploy.md).
+
+  // Nightly full index rebuild, embedding catch-up and hygiene (HLD §4.4).
   "triggers": { "crons": ["17 3 * * *"] },
 
   // Rate limits (ADR-0007): strict per IP/email on /api/v1/auth/*, per key on /api/v1/* and /mcp.
@@ -94,6 +100,8 @@
           "migrations_dir": "../../packages/db/migrations",
         },
       ],
+      "ai": { "binding": "AI" },
+      "vectorize": [{ "binding": "VECTORIZE", "index_name": "second-brain-staging" }],
       "triggers": { "crons": ["17 3 * * *"] },
     },
     "production": {
@@ -128,6 +136,8 @@
           "migrations_dir": "../../packages/db/migrations",
         },
       ],
+      "ai": { "binding": "AI" },
+      "vectorize": [{ "binding": "VECTORIZE", "index_name": "second-brain-production" }],
       "triggers": { "crons": ["17 3 * * *"] },
     },
   },

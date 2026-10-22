@@ -6,7 +6,6 @@ import {
   recentDecisions,
   recentSessionNotes,
   safeJson,
-  searchNotes,
 } from '@second-brain/db';
 import {
   type ConnectInfo,
@@ -20,6 +19,9 @@ import {
   type Page,
   type NoteSummary,
   SaveNoteRequest,
+  SearchMode,
+  type SearchResponse,
+  UpdateSpaceRequest,
 } from '@second-brain/schema';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -31,8 +33,10 @@ import {
   requireScope,
   spaceFor,
 } from '../auth/principal';
-import { effectiveRole, readScope, withSource } from '../authz';
+import { authorize, effectiveRole, readScope, withSource } from '../authz';
 import { HttpError, notFound, parse, readJson } from '../lib/http';
+import { setSemanticEnabled } from '../search/semantic';
+import { searchMemory } from '../search/service';
 import { audit } from '../services/audit';
 import { check } from '../services/memory';
 import { importFiles, noteDetail, writeNote } from '../services/notes';
@@ -169,24 +173,45 @@ const SearchQuery = z.object({
   space_id: z.string().min(1).max(64).optional(),
   include_sessions: z.enum(['true', 'false']).optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
+  mode: SearchMode.optional(),
 });
 
 apiRoutes.get('/search', async (c) => {
   const p = requirePrincipal(c);
   const q = parse(SearchQuery, c.req.query());
-  checkProject(p, q.project);
-  const hits = await searchNotes(c.env.DB, {
-    spaceIds: readScope(p, q.space_id ? { spaceId: spaceFor(p, q.space_id).id } : {}),
+  const body: SearchResponse = await searchMemory(c.env, p, {
     query: q.q,
     types: q.types,
-    project: q.project ?? p.project ?? undefined,
+    project: q.project,
+    spaceId: q.space_id,
     includeSessions: q.include_sessions === 'true',
     limit: q.limit,
+    mode: q.mode,
   });
-  return c.json({
-    hits: hits.map(({ space_id, ...h }) => withSource(p, space_id, h)),
-    mode: 'keyword',
+  return c.json(body);
+});
+
+// ── Spaces ─────────────────────────────────────────────────────────────────
+/**
+ * Space settings. `semantic.enable` is owner-only and needs a signed-in person (agents cannot
+ * send your notes to an embedding model on their own). Turning it on starts a backfill (ADR-0004).
+ */
+apiRoutes.patch('/spaces/:id', async (c) => {
+  const p = requirePrincipal(c);
+  const space = p.spaces.find((s) => s.id === c.req.param('id'));
+  if (!space) throw notFound('No such space.');
+  authorize(p, 'semantic.enable', { spaceId: space.id });
+  const input = parse(UpdateSpaceRequest, await readJson(c));
+  const updated = await setSemanticEnabled(c.env, space, input.semantic_enabled);
+  await audit(c.env.DB, {
+    spaceId: space.id,
+    actorUserId: p.userId,
+    actorKeyId: p.keyId,
+    action: 'space.update',
+    target: space.id,
+    metadata: { semantic_enabled: input.semantic_enabled },
   });
+  return c.json(toSpaceSummary(updated, p.userId));
 });
 
 apiRoutes.get('/projects', async (c) => {

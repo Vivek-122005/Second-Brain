@@ -28,7 +28,7 @@ export interface NoteRow {
 
 const spacesParam = (spaceIds: string[]) => JSON.stringify(spaceIds);
 /** Scope predicate over a table (alias `t`) with `space_id` and `project_slug` columns. */
-const IN_SCOPE = (n: number, t = '') =>
+export const IN_SCOPE = (n: number, t = '') =>
   `(${t}space_id IN (SELECT value FROM json_each(?${n})) OR ` +
   `(${t}space_id || ':' || ${t}project_slug) IN (SELECT value FROM json_each(?${n})))`;
 

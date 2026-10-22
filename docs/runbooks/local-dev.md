@@ -60,7 +60,9 @@ pnpm --filter @second-brain/server dev                   # http://localhost:8787
 
    To try the OAuth flow instead, leave out the header (`claude mcp add --transport http second-brain http://localhost:8787/mcp`) and run `/mcp` → **Authenticate** in Claude Code. The browser opens the consent page at `/oauth/authorize`, after sign-in if needed.
 
-The nightly index rebuild runs on a Cron trigger. To run it locally, start with `wrangler dev --test-scheduled` and open `http://localhost:8787/__scheduled`.
+Semantic search (Workers AI + Vectorize) has no local emulator, so local dev runs keyword-only and search responses say `semantic: "unavailable"` once a space has it enabled. Tests cover the semantic layer with in-memory fakes (`apps/server/test/fakes.ts`); the relevance eval runs with `pnpm --filter @second-brain/server eval:search`.
+
+The nightly index rebuild (and the embedding catch-up) runs on a Cron trigger. To run it locally, start with `wrangler dev --test-scheduled` and open `http://localhost:8787/__scheduled`.
 
 ### Tests that use the Workers runtime
 

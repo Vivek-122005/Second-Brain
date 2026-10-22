@@ -2,6 +2,7 @@ import { applyChanges, isIndexable, rebuildIndex } from '@second-brain/db';
 import type { MiddlewareHandler } from 'hono';
 import type { AppEnv } from '../auth/principal';
 import type { Env } from '../env';
+import { scheduleSpaceEmbedding } from '../search/semantic';
 import { audit } from '../services/audit';
 import { COMPARE_FILE_LIMIT, type GitHubVaultStore } from './github';
 import { githubVaultFor, type SpaceVaultConfig } from './index';
@@ -86,6 +87,12 @@ export async function syncPaths(
   }
   const r = await applyChanges(env.DB, spaceId, { upserts, deletes }, sha);
   await markSynced(env.DB, spaceId, sha);
+  // Semantic layer: embed what changed and purge removed notes, after the response.
+  scheduleSpaceEmbedding(
+    env,
+    spaceId,
+    upserts.map((u) => u.path),
+  );
   return { mode: 'incremental', sha, indexed: r.indexed, removed: r.removed };
 }
 
@@ -104,6 +111,7 @@ export async function syncFull(
     head,
   );
   await markSynced(env.DB, spaceId, head);
+  scheduleSpaceEmbedding(env, spaceId, null);
   return { mode: 'full', sha: head, indexed: r.indexed, removed: r.removed };
 }
 

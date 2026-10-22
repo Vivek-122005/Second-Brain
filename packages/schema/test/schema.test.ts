@@ -9,6 +9,7 @@ import {
   SaveInput,
   SearchInput,
   UpdateGrantRequest,
+  UpdateSpaceRequest,
 } from '../src';
 
 describe('GitHub vault connect request', () => {
@@ -74,9 +75,11 @@ describe('tool inputs', () => {
     expect(ContextInput.parse({})).toEqual({ budget_tokens: 4000, include_shared: true });
     expect(SearchInput.parse({ query: 'x' })).toMatchObject({
       limit: 8,
-      mode: 'keyword',
       include_sessions: false,
     });
+    // No default mode: the server picks hybrid when semantic search is enabled.
+    expect(SearchInput.parse({ query: 'x' }).mode).toBeUndefined();
+    expect(SearchInput.parse({ query: 'x', mode: 'hybrid' }).mode).toBe('hybrid');
   });
 
   it('requires project slugs to be lowercase slugs', () => {
@@ -94,6 +97,17 @@ describe('tool inputs', () => {
         decisions: [{ title: 't', rationale: 'r', supersedes: 'bad' }],
       }),
     ).toThrow();
+  });
+});
+
+describe('REST requests', () => {
+  it('accepts only the semantic_enabled flag on space updates', () => {
+    expect(UpdateSpaceRequest.parse({ semantic_enabled: true })).toEqual({
+      semantic_enabled: true,
+    });
+    expect(() => UpdateSpaceRequest.parse({})).toThrow();
+    expect(() => UpdateSpaceRequest.parse({ semantic_enabled: 'yes' })).toThrow();
+    expect(() => UpdateSpaceRequest.parse({ semantic_enabled: true, owner: 'x' })).toThrow();
   });
 });
 
