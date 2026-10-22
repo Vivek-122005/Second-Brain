@@ -102,5 +102,6 @@ export function toSpaceSummary(s: SpaceRow, userId: string): SpaceSummary {
     kind: s.kind,
     role: s.owner_user_id === userId ? 'owner' : 'viewer',
     vault: { provider: s.vault_provider, repo: s.vault_repo },
+    semantic_enabled: s.semantic_enabled === 1,
   };
 }

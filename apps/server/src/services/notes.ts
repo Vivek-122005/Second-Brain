@@ -11,6 +11,7 @@ import type { ImportResponse, NoteDetail, NoteType, ReadOutput } from '@second-b
 import type { Principal } from '../auth/principal';
 import type { Env } from '../env';
 import { badRequest, conflict, HttpError, notFound } from '../lib/http';
+import { scheduleEmbedding } from '../search/semantic';
 import { audit } from './audit';
 import type { SpaceRow } from './spaces';
 import {
@@ -62,17 +63,13 @@ export async function commitWithRetry<T>(
     const { changes, meta, result } = await build(vault, head);
     try {
       const sha = await vault.commit(changes, meta, head);
-      await applyChanges(
-        env.DB,
-        space.id,
-        {
-          upserts: changes
-            .filter((c) => c.content !== null)
-            .map((c) => ({ path: c.path, content: c.content as string })),
-          deletes: changes.filter((c) => c.content === null).map((c) => c.path),
-        },
-        sha,
-      );
+      const upserts = changes
+        .filter((c) => c.content !== null)
+        .map((c) => ({ path: c.path, content: c.content as string }));
+      const deletes = changes.filter((c) => c.content === null).map((c) => c.path);
+      await applyChanges(env.DB, space.id, { upserts, deletes }, sha);
+      // Semantic layer: re-embed only what changed, after the response (ADR-0004).
+      scheduleEmbedding(env, space, { upserts: upserts.map((u) => u.path), deletes });
       return { sha, result, changes };
     } catch (err) {
       if (err instanceof VaultConflictError && attempt < MAX_ATTEMPTS) continue;

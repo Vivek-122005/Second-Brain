@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/cfworker';
-import { listProjects, searchNotes } from '@second-brain/db';
+import { listProjects } from '@second-brain/db';
 import {
   CheckInput,
   ContextInput,
@@ -15,6 +15,7 @@ import { type Principal, requireScope } from '../auth/principal';
 import type { Env } from '../env';
 import { HttpError } from '../lib/http';
 import { check, context, envelope, save } from '../services/memory';
+import { searchMemory } from '../search/service';
 import { readNoteForAgent, writeNote } from '../services/notes';
 
 export const SERVER_INSTRUCTIONS = `Second Brain is the user's persistent, shared memory across sessions, machines and assistants.
@@ -99,22 +100,22 @@ export function buildMcpServer(env: Env, p: Principal): McpServer {
     {
       title: 'Search memory',
       description:
-        'Full-text search over projects, topics, decisions and notes (session logs only with include_sessions). Returns path, title, heading, snippet and score; follow up with brain_read.',
+        'Searches projects, topics, decisions and notes (session logs only with include_sessions). Keyword search, fused with semantic search (mode=hybrid, the default when the space has it on) so paraphrases match too. Returns path, title, heading, snippet and score, plus which mode ran; follow up with brain_read.',
       inputSchema: SearchInput.shape,
       annotations: READ_ONLY,
     },
     (args) =>
       run(async () => {
         const input = SearchInput.parse(args);
-        const hits = await searchNotes(env.DB, {
-          spaceIds,
+        const result = await searchMemory(env, p, {
           query: input.query,
           types: input.types,
-          project: input.project ?? p.project ?? undefined,
+          project: input.project,
           includeSessions: input.include_sessions,
           limit: input.limit,
+          mode: input.mode,
         });
-        return envelope(space, { hits, mode: 'keyword' as const });
+        return envelope(space, result);
       }),
   );
 

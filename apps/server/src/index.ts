@@ -2,10 +2,12 @@ import { rebuildIndex } from '@second-brain/db';
 import { Hono } from 'hono';
 import { type AppEnv, identify, requireScope } from './auth/principal';
 import type { Env } from './env';
+import { withExecutionContext } from './lib/defer';
 import { HttpError, problem } from './lib/http';
 import { handleMcp } from './mcp/server';
 import { apiRoutes } from './routes/api';
 import { authRoutes } from './routes/auth';
+import { embedCatchUp } from './search/semantic';
 import type { SpaceRow } from './services/spaces';
 import { vaultFor } from './vault';
 
@@ -13,7 +15,15 @@ export const app = new Hono<AppEnv>();
 
 app.use('*', async (c, next) => {
   c.set('requestId', crypto.randomUUID());
-  await next();
+  let ctx: ExecutionContext | undefined;
+  try {
+    ctx = c.executionCtx as ExecutionContext;
+  } catch {
+    ctx = undefined;
+  }
+  // Lets services defer background work (embedding) to this request's waitUntil.
+  if (ctx) await withExecutionContext(ctx, next);
+  else await next();
   c.header('x-request-id', c.get('requestId'));
   c.header('x-content-type-options', 'nosniff');
   c.header('referrer-policy', 'strict-origin-when-cross-origin');
@@ -92,6 +102,19 @@ export async function rebuildAll(env: Env): Promise<{ spaces: number }> {
 export default {
   fetch: app.fetch,
   async scheduled(_controller, env, ctx) {
-    ctx.waitUntil(rebuildAll(env));
+    // Rebuild first, so the embedding catch-up sees (and purges vectors of) removed notes.
+    ctx.waitUntil(
+      rebuildAll(env)
+        .then(() => embedCatchUp(env))
+        .catch((err: unknown) => {
+          console.error(
+            JSON.stringify({
+              level: 'error',
+              job: 'scheduled',
+              error: err instanceof Error ? err.name : 'unknown',
+            }),
+          );
+        }),
+    );
   },
 } satisfies ExportedHandler<Env>;
