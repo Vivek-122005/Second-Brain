@@ -93,6 +93,26 @@ describe('createHttpClient', () => {
     });
   });
 
+  it('keeps problem extension members and sends skip_import on disconnect', async () => {
+    const fetch = vi.fn(async (_input: string, _init?: RequestInit) =>
+      problem(409, { type: 'x', title: 'Conflict', status: 409, detail: 'd', repo_notes: 12 }),
+    );
+    const api = createHttpClient({ fetch });
+    await expect(
+      api.connectGitHubVault('spc_1', {
+        repo: 'a/b',
+        token: 'github_pat_x',
+        direction: 'push_managed',
+      }),
+    ).rejects.toMatchObject({ status: 409, extensions: { repo_notes: 12 } });
+
+    fetch.mockResolvedValueOnce(Response.json({ imported: 0 }));
+    await api.disconnectGitHubVault('spc_1', { skipImport: true });
+    const [url, init] = fetch.mock.calls[1] ?? [];
+    expect(url).toBe('/api/v1/spaces/spc_1/vault/github?skip_import=true');
+    expect(init?.method).toBe('DELETE');
+  });
+
   it('handles 204 No Content', async () => {
     const api = createHttpClient({ fetch: async () => new Response(null, { status: 204 }) });
     await expect(api.revokeKey('key_1')).resolves.toBeUndefined();

@@ -26,12 +26,15 @@ import { createHttpClient, type ApiClient } from './client';
 import type {
   ApiKey,
   CheckOutput,
+  ConnectGitHubVaultInput,
+  ConnectGitHubVaultResponse,
   ConnectInfo,
   CreateKeyInput,
   CreateKeyResponse,
   DashboardResponse,
   DeviceApproveInput,
   DeviceRequestInfo,
+  DisconnectGitHubVaultResponse,
   KeyScope,
   MagicLinkResponse,
   MeResponse,
@@ -45,6 +48,7 @@ import type {
   SaveNoteResponse,
   SearchHit,
   SearchResponse,
+  VaultStatus,
 } from './contract';
 import type {
   AuthProviders,
@@ -81,10 +85,18 @@ export interface MockServerOptions {
   persistSession?: boolean;
   /** Whether email links are offered (default true). Off, the last passkey cannot be removed. */
   magicLink?: boolean;
+  /** Whether the server has VAULT_KEK set (default true). Off, connecting GitHub answers 503. */
+  vaultKek?: boolean;
+}
+
+/** A space's vault in the mock. The token stays here and is never returned, like the server. */
+interface MockVault {
+  status: VaultStatus;
+  token: string | null;
 }
 
 class HttpProblem extends Error {
-  constructor(readonly problem: ProblemDetails) {
+  constructor(readonly problem: ProblemDetails & Record<string, unknown>) {
     super(problem.title);
   }
 }
@@ -173,6 +185,8 @@ export class MockServer {
   /** Passkeys registered in this mock session (signatures are not verified). */
   private passkeys: Passkey[] = [];
   private readonly magicLink: boolean;
+  private readonly vaultKek: boolean;
+  private vaults = new Map<string, MockVault>();
   private registerChallenge: string | null = null;
   private loginChallenge: string | null = null;
   private versionCounter = 0;
@@ -188,6 +202,7 @@ export class MockServer {
     const persisted = this.persistSession ? readSessionFlag() : null;
     this.signedIn = persisted ?? opts.signedIn ?? true;
     this.magicLink = opts.magicLink ?? true;
+    this.vaultKek = opts.vaultKek ?? true;
     this.passkeys.push({
       id: 'pk_seed_macbook',
       name: 'MacBook Pro',
@@ -400,6 +415,214 @@ export class MockServer {
     if (!this.signedIn) throw problem(401, 'Not signed in', 'Sign in to continue.');
   }
 
+  // ── Vault (GitHub sync) ───────────────────────────────────────────────────
+  //
+  // Conventions so every server answer can be tried by hand:
+  //   repo owner "missing"       → 400 Repository not found
+  //   token containing "revoked" → 400 GitHub rejected the token
+  //   token containing "readonly"→ 400 The token lacks permission
+  //   repo name containing "existing" has 12 notes (push_managed needs confirm_overwrite)
+  //   token containing "nohooks" → the webhook can't be created; its secret is shown instead
+
+  private vault(spaceId: string): MockVault {
+    let v = this.vaults.get(spaceId);
+    if (!v) {
+      const github = spaceId === 'spc_acme';
+      v = {
+        token: github ? 'github_pat_seed' : null,
+        status: {
+          space_id: spaceId,
+          provider: github ? 'github' : 'managed',
+          repo: github ? 'acme/platform-brain' : null,
+          branch: github ? 'main' : null,
+          last_synced_sha: github ? 'a1b2c3d4e5f6' : null,
+          last_synced_at: github
+            ? new Date(this.now().getTime() - 20 * 60_000).toISOString()
+            : null,
+          last_sync_error: null,
+          webhook: github
+            ? {
+                configured: true,
+                auto_created: true,
+                payload_url: this.payloadUrl(spaceId),
+                last_delivery_at: new Date(this.now().getTime() - 20 * 60_000).toISOString(),
+              }
+            : null,
+        },
+      };
+      this.vaults.set(spaceId, v);
+    }
+    return v;
+  }
+
+  private vaultSummary(spaceId: string): { provider: 'managed' | 'github'; repo: string | null } {
+    const { provider, repo } = this.vault(spaceId).status;
+    return { provider, repo };
+  }
+
+  private payloadUrl(spaceId: string): string {
+    const origin = globalThis.location?.origin ?? 'http://localhost:8787';
+    return `${origin}/webhooks/github/${spaceId}`;
+  }
+
+  private ownedVault(spaceId: string): MockVault {
+    const space = this.me().spaces.find((s) => s.id === spaceId);
+    if (!space) throw problem(404, 'Not found', 'No such space.');
+    if (space.role !== 'owner') {
+      throw problem(403, 'Forbidden', 'Only the space owner can manage its vault.');
+    }
+    return this.vault(spaceId);
+  }
+
+  private connectVault(spaceId: string, body: unknown): ConnectGitHubVaultResponse {
+    const v = this.ownedVault(spaceId);
+    if (!this.vaultKek) {
+      throw problem(503, 'Not configured', 'GitHub vaults need VAULT_KEK set on the server.');
+    }
+    const req = (body ?? {}) as Partial<ConnectGitHubVaultInput>;
+    const errors: { path: string; message: string }[] = [];
+    if (typeof req.repo !== 'string' || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(req.repo)) {
+      errors.push({ path: 'repo', message: 'repo must be "owner/name"' });
+    }
+    if (typeof req.token !== 'string' || req.token.length < 10) {
+      errors.push({ path: 'token', message: 'Too small: expected string to have >=10 characters' });
+    }
+    if (req.direction !== 'push_managed' && req.direction !== 'adopt_repo') {
+      errors.push({ path: 'direction', message: 'Invalid option' });
+    }
+    if (errors.length) {
+      throw new HttpProblem({
+        type: 'https://second-brain.dev/problems/validation',
+        title: 'Invalid input',
+        status: 422,
+        errors,
+      });
+    }
+    const repo = req.repo as string;
+    const token = req.token as string;
+    if (v.status.provider === 'github') {
+      throw problem(
+        409,
+        'Conflict',
+        'This space is already connected to GitHub. Disconnect it first.',
+      );
+    }
+    if (token.includes('revoked')) {
+      throw problem(
+        400,
+        'GitHub rejected the token',
+        'GitHub answered 401. Check that the token is correct and has not expired or been revoked.',
+      );
+    }
+    if (repo.split('/')[0] === 'missing') {
+      throw problem(
+        400,
+        'Repository not found',
+        `${repo} does not exist, or the token has no access to it.`,
+      );
+    }
+    if (token.includes('readonly')) {
+      throw problem(
+        400,
+        'The token lacks permission',
+        `The token can read ${repo} but not write to it.`,
+      );
+    }
+    const branch = req.branch || 'main';
+    const repoNotes = repo.includes('existing') ? 12 : 0;
+    const managedNotes = this.notes.size;
+    if (req.direction === 'push_managed' && repoNotes > 0 && !req.confirm_overwrite) {
+      throw new HttpProblem({
+        type: 'https://second-brain.dev/problems/conflict',
+        title: 'Conflict',
+        status: 409,
+        detail: `${repo}@${branch} already has ${repoNotes} notes. Pass confirm_overwrite: true to export on top of them, or use adopt_repo.`,
+        repo_notes: repoNotes,
+      });
+    }
+    if (req.direction === 'adopt_repo' && managedNotes > 0 && !req.confirm_overwrite) {
+      throw new HttpProblem({
+        type: 'https://second-brain.dev/problems/conflict',
+        title: 'Conflict',
+        status: 409,
+        detail: `This space has ${managedNotes} notes that the repository's notes would replace. Pass confirm_overwrite: true, or use push_managed to keep them.`,
+        managed_notes: managedNotes,
+      });
+    }
+    const created = req.create_webhook !== false && !token.includes('nohooks');
+    const sha = randomHex(20);
+    const now = this.now().toISOString();
+    v.token = token;
+    v.status = {
+      space_id: spaceId,
+      provider: 'github',
+      repo,
+      branch,
+      last_synced_sha: sha,
+      last_synced_at: now,
+      last_sync_error: null,
+      webhook: {
+        configured: created,
+        auto_created: created,
+        payload_url: this.payloadUrl(spaceId),
+        last_delivery_at: null,
+      },
+    };
+    const pushing = req.direction === 'push_managed';
+    return {
+      vault: v.status,
+      direction: req.direction as ConnectGitHubVaultResponse['direction'],
+      exported: pushing ? managedNotes : 0,
+      indexed: pushing ? managedNotes + repoNotes : Math.max(repoNotes, 5),
+      commit_sha: pushing && managedNotes > 0 ? sha : null,
+      webhook: {
+        payload_url: this.payloadUrl(spaceId),
+        content_type: 'application/json',
+        secret: randomHex(20),
+        events: ['push'],
+        created,
+        detail: created
+          ? null
+          : req.create_webhook === false
+            ? 'You chose to add the webhook yourself.'
+            : 'The token cannot manage webhooks (it needs "Webhooks: Read and write"). Add it by hand.',
+      },
+    };
+  }
+
+  private disconnectVault(spaceId: string, skipImport: boolean): DisconnectGitHubVaultResponse {
+    const v = this.ownedVault(spaceId);
+    if (v.status.provider !== 'github') {
+      throw problem(409, 'Conflict', 'This space is not connected to GitHub.');
+    }
+    if (!skipImport && v.token?.includes('revoked')) {
+      throw problem(
+        400,
+        'GitHub rejected the token',
+        'GitHub answered 401. Check that the token is correct and has not expired or been revoked.',
+      );
+    }
+    const webhookRemoved = Boolean(v.status.webhook?.auto_created);
+    v.token = null;
+    v.status = {
+      space_id: spaceId,
+      provider: 'managed',
+      repo: null,
+      branch: null,
+      last_synced_sha: null,
+      last_synced_at: null,
+      last_sync_error: null,
+      webhook: null,
+    };
+    return {
+      vault: v.status,
+      imported: skipImport ? 0 : 3,
+      removed: 0,
+      commit_sha: skipImport ? null : randomHex(20),
+      webhook_removed: webhookRemoved,
+    };
+  }
+
   private me(): MeResponse {
     return {
       user: { id: 'usr_01JB6Z0000000000000000000A', email: 'alex@example.com', name: 'Alex Doe' },
@@ -409,14 +632,14 @@ export class MockServer {
           name: 'Personal',
           kind: 'personal',
           role: 'owner',
-          vault: { provider: 'managed', repo: null },
+          vault: this.vaultSummary('spc_personal'),
         },
         {
           id: 'spc_acme',
           name: 'Acme Platform',
           kind: 'team',
           role: 'editor',
-          vault: { provider: 'github', repo: 'acme/platform-brain' },
+          vault: this.vaultSummary('spc_acme'),
         },
       ],
       default_space_id: 'spc_personal',
@@ -802,6 +1025,15 @@ export class MockServer {
         }
         this.passkeys.splice(index, 1);
         return new Response(null, { status: 204 });
+      }
+    }
+    const vaultMatch = /^\/spaces\/([^/]+)\/vault(\/github)?$/.exec(path);
+    if (vaultMatch) {
+      const spaceId = decodeURIComponent(vaultMatch[1] ?? '');
+      if (method === 'GET' && !vaultMatch[2]) return json(200, this.ownedVault(spaceId).status);
+      if (method === 'POST' && vaultMatch[2]) return json(201, this.connectVault(spaceId, body));
+      if (method === 'DELETE' && vaultMatch[2]) {
+        return json(200, this.disconnectVault(spaceId, q.get('skip_import') === 'true'));
       }
     }
     if (method === 'GET' && path === '/dashboard') return json(200, this.dashboard());
