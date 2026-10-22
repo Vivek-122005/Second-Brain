@@ -254,3 +254,129 @@ export interface ImportResponse {
   skipped: { path: string; reason: string }[];
   commit_sha: string | null;
 }
+
+// ── Connected apps (OAuth 2.1 for MCP clients) ────────────────────────────
+/**
+ * An MCP client the user approved on the OAuth consent screen. Disconnecting it revokes every
+ * access and refresh token the client holds.
+ */
+export interface OAuthGrant {
+  id: string;
+  client_id: string;
+  /** Name the client registered with. It is self-declared, so show `redirect_hosts` next to it. */
+  client_name: string;
+  client_uri: string | null;
+  /** Hosts of the client's registered redirect URIs, e.g. `claude.ai` or `localhost`. */
+  redirect_hosts: string[];
+  scopes: KeyScope[];
+  /** The space the client may use. */
+  space_id: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+/** GET /api/v1/oauth/grants → `OAuthGrantsResponse` · DELETE /api/v1/oauth/grants/:id → 204 */
+export type OAuthGrantsResponse = Page<OAuthGrant>;
+
+// ── Vault: GitHub sync ─────────────────────────────────────────────────────
+/** `owner/name` of a GitHub repository. */
+export const GitHubRepoName = z
+  .string()
+  .max(200)
+  .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, 'repo must be "owner/name"');
+
+/** A Git branch name (a conservative subset of git-check-ref-format). */
+export const GitBranchName = z
+  .string()
+  .min(1)
+  .max(200)
+  .regex(
+    /^(?![/.-])(?!.*(?:\.\.|\/\/|@\{|\.lock$|\/$|\.$))[A-Za-z0-9._/-]+$/,
+    'invalid branch name',
+  );
+
+/**
+ * Initial direction when connecting a space to a repository:
+ * - `push_managed`: export the managed vault's files to the repo as one commit (the repo must
+ *   have no notes yet, or `confirm_overwrite` must be true), then switch the space to GitHub.
+ * - `adopt_repo`: import the repo's Markdown files and switch the space to GitHub (the managed
+ *   vault must be empty, or `confirm_overwrite` must be true).
+ */
+export const VaultSyncDirection = z.enum(['push_managed', 'adopt_repo']);
+export type VaultSyncDirection = z.infer<typeof VaultSyncDirection>;
+
+/** POST /api/v1/spaces/:id/vault/github → 201 `ConnectGitHubVaultResponse` (space owner only) */
+export const ConnectGitHubVaultRequest = z.object({
+  repo: GitHubRepoName,
+  /** Defaults to the repository's default branch. */
+  branch: GitBranchName.optional(),
+  /** Fine-grained personal access token with Contents read/write on this one repository. */
+  token: z.string().min(10).max(500),
+  direction: VaultSyncDirection,
+  /** Required when the connect would overwrite existing notes on either side. */
+  confirm_overwrite: z.boolean().default(false),
+  /** Try to create the push webhook with the token (needs the Webhooks permission). */
+  create_webhook: z.boolean().default(true),
+});
+export type ConnectGitHubVaultRequest = z.infer<typeof ConnectGitHubVaultRequest>;
+
+export interface VaultWebhookStatus {
+  /** True once we created the hook, or a correctly signed delivery (ping/push) arrived. */
+  configured: boolean;
+  /** True when Second Brain created the hook through the API. */
+  auto_created: boolean;
+  payload_url: string;
+  last_delivery_at: string | null;
+}
+
+/** GET /api/v1/spaces/:id/vault (space owner only) */
+export interface VaultStatus {
+  space_id: string;
+  provider: 'managed' | 'github';
+  repo: string | null;
+  branch: string | null;
+  /** Vault commit the search index reflects. */
+  last_synced_sha: string | null;
+  last_synced_at: string | null;
+  /** Why the last background sync failed, if it did. */
+  last_sync_error: string | null;
+  /** Null for managed spaces. */
+  webhook: VaultWebhookStatus | null;
+}
+
+/** Shown once: what to enter in GitHub → Settings → Webhooks when it was not created for you. */
+export interface GitHubWebhookSetup {
+  payload_url: string;
+  content_type: 'application/json';
+  /** The webhook secret. Shown only in this response. */
+  secret: string;
+  events: ['push'];
+  /** True when the hook was created automatically. */
+  created: boolean;
+  /** Why it was not created automatically, when it wasn't. */
+  detail: string | null;
+}
+
+export interface ConnectGitHubVaultResponse {
+  vault: VaultStatus;
+  direction: VaultSyncDirection;
+  /** Notes exported to the repository (push_managed). */
+  exported: number;
+  /** Notes indexed from the repository after the switch. */
+  indexed: number;
+  /** Commit created on the repository by push_managed, if any. */
+  commit_sha: string | null;
+  webhook: GitHubWebhookSetup;
+}
+
+/** DELETE /api/v1/spaces/:id/vault/github → 200 (space owner only): back to the managed vault. */
+export interface DisconnectGitHubVaultResponse {
+  vault: VaultStatus;
+  /** Notes copied from the repository into the managed vault (new or changed). */
+  imported: number;
+  /** Managed notes removed because they no longer exist in the repository. */
+  removed: number;
+  /** Managed commit holding the imported files, or null when nothing changed. */
+  commit_sha: string | null;
+  /** Whether the webhook we created was removed from the repository. */
+  webhook_removed: boolean;
+}

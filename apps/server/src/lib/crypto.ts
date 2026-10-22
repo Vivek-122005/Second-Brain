@@ -71,25 +71,38 @@ async function kek(secret: string): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
 }
 
-/** AES-256-GCM encryption for stored third-party tokens. Output: `v1.<iv>.<ciphertext>` (base64). */
-export async function encryptSecret(kekB64: string, plaintext: string): Promise<string> {
+/**
+ * AES-256-GCM encryption for stored third-party tokens. Output: `v1.<iv>.<ciphertext>` (base64).
+ * `aad` (additional authenticated data) binds the ciphertext to its context, e.g. the space and
+ * column it belongs to: decrypting with a different `aad` fails, so a sealed value copied into
+ * another row or column is useless.
+ */
+export async function encryptSecret(
+  kekB64: string,
+  plaintext: string,
+  aad?: string,
+): Promise<string> {
   const iv = new Uint8Array(12);
   crypto.getRandomValues(iv);
   const ct = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv, ...additionalData(aad) },
     await kek(kekB64),
     new TextEncoder().encode(plaintext),
   );
   return `v1.${b64(iv)}.${b64(new Uint8Array(ct))}`;
 }
 
-export async function decryptSecret(kekB64: string, sealed: string): Promise<string> {
+export async function decryptSecret(kekB64: string, sealed: string, aad?: string): Promise<string> {
   const [v, iv, ct] = sealed.split('.');
   if (v !== 'v1' || !iv || !ct) throw new Error('Unknown secret format');
   const pt = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: unb64(iv) },
+    { name: 'AES-GCM', iv: unb64(iv), ...additionalData(aad) },
     await kek(kekB64),
     unb64(ct),
   );
   return new TextDecoder().decode(pt);
+}
+
+function additionalData(aad: string | undefined): { additionalData?: Uint8Array } {
+  return aad === undefined ? {} : { additionalData: new TextEncoder().encode(aad) };
 }
