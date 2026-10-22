@@ -240,16 +240,16 @@ export function scheduleSpaceEmbedding(
 }
 
 /** Switches semantic search on or off for a space; on starts a backfill, off removes its vectors. */
-export async function setSemanticEnabled(
+export async function setSemanticEnabled<S extends SpaceRow>(
   env: Env,
-  space: SpaceRow,
+  space: S,
   enabled: boolean,
   sem: Semantic | null = semanticFor(env),
-): Promise<SpaceRow> {
+): Promise<S> {
   await env.DB.prepare('UPDATE spaces SET semantic_enabled = ?1 WHERE id = ?2')
     .bind(enabled ? 1 : 0, space.id)
     .run();
-  const updated: SpaceRow = { ...space, semantic_enabled: enabled ? 1 : 0 };
+  const updated: S = { ...space, semantic_enabled: enabled ? 1 : 0 };
   const changed = (space.semantic_enabled === 1) !== enabled;
   if (changed && sem) {
     defer(

@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AcceptGrantRequest,
   ConnectGitHubVaultRequest,
   ContextInput,
+  CreateGrantRequest,
   Decision,
   ProjectFrontmatter,
   SaveInput,
   SearchInput,
+  UpdateGrantRequest,
   UpdateSpaceRequest,
 } from '../src';
 
@@ -105,5 +108,30 @@ describe('REST requests', () => {
     expect(() => UpdateSpaceRequest.parse({})).toThrow();
     expect(() => UpdateSpaceRequest.parse({ semantic_enabled: 'yes' })).toThrow();
     expect(() => UpdateSpaceRequest.parse({ semantic_enabled: true, owner: 'x' })).toThrow();
+  });
+});
+
+describe('sharing schemas', () => {
+  it('validates grant requests', () => {
+    expect(
+      CreateGrantRequest.parse({ space_id: 'spc_1', email: 'a@example.com', role: 'viewer' }),
+    ).toEqual({ space_id: 'spc_1', email: 'a@example.com', role: 'viewer' });
+    expect(() =>
+      CreateGrantRequest.parse({ space_id: 'spc_1', email: 'a@example.com', role: 'owner' }),
+    ).toThrow();
+    expect(() =>
+      CreateGrantRequest.parse({
+        space_id: 'spc_1',
+        email: 'a@example.com',
+        role: 'editor',
+        project: 'Not A Slug',
+      }),
+    ).toThrow();
+  });
+
+  it('keeps shared content out of agent context unless the recipient opts in', () => {
+    expect(AcceptGrantRequest.parse({})).toEqual({ include_in_agent_context: false });
+    expect(() => UpdateGrantRequest.parse({})).toThrow();
+    expect(UpdateGrantRequest.parse({ role: 'editor' })).toEqual({ role: 'editor' });
   });
 });

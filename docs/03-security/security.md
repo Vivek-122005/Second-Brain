@@ -50,7 +50,7 @@ True E2EE (server can't read notes) is **not** a v1 goal because server-side FTS
 - **Principals:** `user` (web session), `api_key` (machine and client), `oauth_token` (MCP client). They are all resolved to `Principal{user_id, org_id, scopes, restriction}`.
 - **Authorization** = effective role on the resource ∩ key scope. Example: an editor on a space using a read-only key can only read.
 - **Policy engine:** a central `can(principal, action, resource)` in `services/authz` with a declarative permission matrix ([sharing doc](../04-collaboration/sharing-and-tenancy.md#permission-matrix)). Handlers are not allowed to run ad-hoc checks, and a lint rule blocks repository calls outside services.
-- **OAuth 2.1 for MCP:** authorization code + PKCE, dynamic client registration, audience-bound tokens (15 min access, rotating refresh), consent screen listing the scopes.
+- **OAuth 2.1 for MCP:** authorization code + PKCE (S256 only), dynamic client registration, audience-bound opaque tokens stored as hashes (1 h access, 30-day rotating refresh with reuse detection that revokes the token family), consent screen listing the client, redirect host, scopes and space ([LLD §8](../02-architecture/lld.md#8-oauth-21-for-mcp-clients)).
 - **Sessions:** 7-day sliding, re-authentication for sensitive actions (create key, share admin, export, delete).
 
 ## 4. Prompt-injection & agent safety

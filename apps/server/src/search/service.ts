@@ -1,18 +1,21 @@
 import { chunkHits, searchNotes } from '@second-brain/db';
 import type { NoteType, SearchHit, SearchMode, SemanticStatus } from '@second-brain/schema';
-import type { Principal } from '../auth/principal';
+import { checkProject, type Principal, spaceFor } from '../auth/principal';
+import { readScope, withSource } from '../authz';
 import type { Env } from '../env';
-import { fuseHits, type VectorHit } from './fusion';
+import { fuseHits, type ScopedHit, type VectorHit } from './fusion';
 import { type Semantic, semanticFor } from './semantic';
 import { MAX_TOP_K } from './vectors';
 
 /**
  * Search used by both `brain_search` (MCP) and `GET /api/v1/search` (LLD §4.2, ADR-0004).
  *
- * Keyword (FTS5/BM25) always runs. In hybrid mode a vector query runs in parallel, restricted by
- * Vectorize metadata to the caller's semantic-enabled spaces (and project), hits under the
- * similarity floor are dropped, the rest are re-checked against D1 with the same permission filter
- * as keyword search, and both lists are fused with RRF. Any AI/Vectorize failure (or a missing
+ * Keyword (FTS5/BM25) always runs, scoped by `readScope(p)`. In hybrid mode a vector query runs in
+ * parallel, pre-filtered by Vectorize metadata to the semantic-enabled spaces in that scope (and the
+ * project, when one is asked for). Hits under the similarity floor are dropped. The rest are
+ * re-checked in D1 with the **same scope tokens and `IN_SCOPE` predicate as keyword search**, so a
+ * project-level grant never exposes other projects of the space through vectors, whatever the
+ * vector index returns. Both lists are fused with RRF. Any AI/Vectorize failure (or a missing
  * binding) degrades silently to keyword results with `semantic: "unavailable"`.
  */
 
@@ -20,6 +23,8 @@ export interface SearchRequest {
   query: string;
   types?: NoteType[] | undefined;
   project?: string | undefined;
+  /** Search one space only (must be readable by the caller). */
+  spaceId?: string | undefined;
   includeSessions?: boolean | undefined;
   limit: number;
   /** Omitted: hybrid when semantic search is on for a searched space, else keyword. */
@@ -43,11 +48,15 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
 }
 
+/** Space id of a scope token (`space_id` or `space_id:project`; space ids never contain `:`). */
+const spaceOfToken = (token: string) => token.split(':')[0] ?? token;
+
 async function vectorLeg(
   db: D1Database,
   sem: Semantic,
   req: SearchRequest,
-  spaceIds: string[],
+  scope: string[],
+  vectorSpaces: string[],
   project: string | undefined,
 ): Promise<VectorHit[]> {
   const [values] = await sem.embedder.embed([req.query]);
@@ -55,21 +64,23 @@ async function vectorLeg(
   const types = req.types?.length ? req.types : undefined;
   const matches = await sem.vectors.query(values, {
     topK: Math.min(req.limit * 4, MAX_TOP_K),
-    spaceIds,
+    spaceIds: vectorSpaces,
     project,
     types,
     excludeSessions: !req.includeSessions && !(types?.includes('session') ?? false),
   });
   const scores = new Map(matches.map((m) => [m.id, m.score]));
-  // Permission filtering again, from D1: only chunks in these spaces (and scope) come back.
+  // Permission filtering again, from D1, with the caller's scope tokens: the vector index is a
+  // candidate generator only, never the permission boundary.
   const rows = await chunkHits(db, {
-    spaceIds,
+    spaceIds: scope.filter((t) => vectorSpaces.includes(spaceOfToken(t))),
     chunkIds: matches.map((m) => m.id),
     project,
     types,
     includeSessions: req.includeSessions,
   });
   return rows.map((r) => ({
+    space_id: r.space_id,
     path: r.path,
     title: r.title,
     type: r.type,
@@ -85,11 +96,15 @@ export async function searchMemory(
   req: SearchRequest,
   opts: { semantic?: Semantic | null } = {},
 ): Promise<SearchResult> {
-  const spaceIds = p.spaces.map((s) => s.id);
+  checkProject(p, req.project);
+  const target = req.spaceId ? spaceFor(p, req.spaceId) : null;
+  const scope = readScope(p, target ? { spaceId: target.id } : {});
   const project = req.project ?? p.project ?? undefined;
+  const present = (hits: ScopedHit[]): SearchHit[] =>
+    hits.map(({ space_id, ...h }) => withSource(p, space_id, h));
   const keyword = (limit: number) =>
     searchNotes(env.DB, {
-      spaceIds,
+      spaceIds: scope,
       query: req.query,
       types: req.types,
       project,
@@ -97,18 +112,23 @@ export async function searchMemory(
       limit,
     });
 
-  const semanticSpaces = p.spaces.filter((s) => s.semantic_enabled === 1).map((s) => s.id);
-  const hybrid = (req.mode ?? (semanticSpaces.length ? 'hybrid' : 'keyword')) === 'hybrid';
-  if (!hybrid || semanticSpaces.length === 0) {
-    return { hits: await keyword(req.limit), mode: 'keyword', semantic: 'disabled' };
+  const inScope = new Set(scope.map(spaceOfToken));
+  const vectorSpaces = p.spaces
+    .filter((s) => inScope.has(s.id) && s.semantic_enabled === 1)
+    .map((s) => s.id);
+  const hybrid = (req.mode ?? (vectorSpaces.length ? 'hybrid' : 'keyword')) === 'hybrid';
+  if (!hybrid || vectorSpaces.length === 0) {
+    return { hits: present(await keyword(req.limit)), mode: 'keyword', semantic: 'disabled' };
   }
 
   const sem = opts.semantic !== undefined ? opts.semantic : semanticFor(env);
-  if (!sem) return { hits: await keyword(req.limit), mode: 'keyword', semantic: 'unavailable' };
+  if (!sem) {
+    return { hits: present(await keyword(req.limit)), mode: 'keyword', semantic: 'unavailable' };
+  }
 
   const [kw, vec] = await Promise.all([
     keyword(req.limit * 2),
-    withTimeout(vectorLeg(env.DB, sem, req, semanticSpaces, project), VECTOR_TIMEOUT_MS).catch(
+    withTimeout(vectorLeg(env.DB, sem, req, scope, vectorSpaces, project), VECTOR_TIMEOUT_MS).catch(
       (err: unknown) => {
         console.error(
           JSON.stringify({
@@ -122,7 +142,11 @@ export async function searchMemory(
     ),
   ]);
   if (vec === null) {
-    return { hits: kw.slice(0, req.limit), mode: 'keyword', semantic: 'unavailable' };
+    return { hits: present(kw.slice(0, req.limit)), mode: 'keyword', semantic: 'unavailable' };
   }
-  return { hits: fuseHits(kw, vec, { limit: req.limit }), mode: 'hybrid', semantic: 'used' };
+  return {
+    hits: present(fuseHits(kw, vec, { limit: req.limit })),
+    mode: 'hybrid',
+    semantic: 'used',
+  };
 }

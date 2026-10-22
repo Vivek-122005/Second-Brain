@@ -50,12 +50,12 @@ Until step 5 is done, the Deploy workflow skips with a notice instead of failing
 
    Give the deploy token (`CLOUDFLARE_API_TOKEN`) the extra permissions *Vectorize: Edit* and *Workers AI: Read*. Workers AI needs no setup beyond the binding.
 
-   Semantic search is **off per space** until the space owner turns it on:
+   Semantic search is **off per space** until the space owner turns it on, signed in to the web app. API keys and OAuth tokens are refused, so an agent cannot send your notes to the embedding model by itself. From a signed-in browser session:
 
    ```bash
    curl -X PATCH "$APP_URL/api/v1/spaces/<space_id>" \
-     -H "authorization: Bearer $SECOND_BRAIN_KEY" -H 'content-type: application/json' \
-     -d '{"semantic_enabled": true}'
+     -H "cookie: sb_session=<your session cookie>" -H "origin: $APP_URL" \
+     -H 'content-type: application/json' -d '{"semantic_enabled": true}'
    ```
 
    Turning it on embeds up to 200 chunks at once; the nightly Cron embeds the rest (200 chunks per run by default, `SEMANTIC_CRON_CHUNK_CAP` to change), so a large vault is spread over several nights. After that only notes whose content hash changed are re-embedded. Turning it off deletes the space's vectors. If the bindings are missing or failing, search silently falls back to keyword and responses say `semantic: "unavailable"`.

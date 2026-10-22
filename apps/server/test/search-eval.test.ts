@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { evaluate, ndcgAt, parseCases } from '../../../evals/ndcg';
 import evalSet from '../../../evals/search.jsonl?raw';
 import { callWith, FakeAi, FakeVectorize, semanticEnv } from './fakes';
-import { newUserWithKey } from './helpers';
+import { createSession } from '../src/auth/sessions';
+import { env, newUserWithKey } from './helpers';
 
 /**
  * Search relevance eval (ADR-0004): nDCG@5 of keyword vs hybrid over `evals/search.jsonl` and the
@@ -42,11 +43,17 @@ describe('search relevance eval (evals/search.jsonl)', () => {
     const me = (await (await callWith(e, '/api/v1/me', { headers })).json()) as {
       default_space_id: string;
     };
-    await callWith(e, `/api/v1/spaces/${me.default_space_id}`, {
+    const session = await createSession(env.DB, u.user.id);
+    const enabled = await callWith(e, `/api/v1/spaces/${me.default_space_id}`, {
       method: 'PATCH',
-      headers,
+      headers: {
+        cookie: `sb_session=${session.token}`,
+        origin: 'http://app.test',
+        'content-type': 'application/json',
+      },
       body: JSON.stringify({ semantic_enabled: true }),
     });
+    expect(enabled.status).toBe(200);
     const imported = await callWith(e, '/api/v1/import', {
       method: 'POST',
       headers,

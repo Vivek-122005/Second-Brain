@@ -6,8 +6,12 @@ export const RRF_K = 60;
 /** Vector hits below this cosine similarity are dropped before fusion (LLD §4.2). */
 export const MIN_SIMILARITY = 0.35;
 
+/** A search hit with the space it came from (needed for `source` and per-space dedupe). */
+export type ScopedHit = SearchHit & { space_id: string };
+
 /** A vector match already resolved (and permission-checked) against D1. */
 export interface VectorHit {
+  space_id: string;
   path: string;
   title: string;
   type: string;
@@ -18,6 +22,9 @@ export interface VectorHit {
 }
 
 const SNIPPET_CHARS = 200;
+
+/** Notes are identified by space + path: the same path can exist in two spaces. */
+const keyOf = (h: { space_id: string; path: string }) => `${h.space_id}\n${h.path}`;
 
 export function snippetOf(body: string): string {
   const flat = body.replace(/\s+/g, ' ').trim();
@@ -32,7 +39,7 @@ export function bestVectorHitPerNote(
   const best = new Map<string, VectorHit>();
   for (const h of [...hits].sort((a, b) => b.score - a.score)) {
     if (h.score < minSimilarity) continue;
-    if (!best.has(h.path)) best.set(h.path, h);
+    if (!best.has(keyOf(h))) best.set(keyOf(h), h);
   }
   return [...best.values()];
 }
@@ -43,14 +50,15 @@ export function bestVectorHitPerNote(
  * the keyword snippet (it highlights the matched terms); the hit score becomes the RRF score.
  */
 export function fuseHits(
-  keyword: SearchHit[],
+  keyword: ScopedHit[],
   vector: VectorHit[],
   opts: { limit: number; k?: number; minSimilarity?: number },
-): SearchHit[] {
+): ScopedHit[] {
   const vectors = bestVectorHitPerNote(vector, opts.minSimilarity ?? MIN_SIMILARITY);
-  const byPath = new Map<string, SearchHit>();
+  const byKey = new Map<string, ScopedHit>();
   for (const v of vectors) {
-    byPath.set(v.path, {
+    byKey.set(keyOf(v), {
+      space_id: v.space_id,
       path: v.path,
       title: v.title,
       type: v.type,
@@ -59,15 +67,12 @@ export function fuseHits(
       score: 0,
     });
   }
-  for (const h of keyword) byPath.set(h.path, h);
+  for (const h of keyword) byKey.set(keyOf(h), h);
 
-  const fused = reciprocalRankFusion(
-    [keyword.map((h) => h.path), vectors.map((v) => v.path)],
-    opts.k ?? RRF_K,
-  );
-  const out: SearchHit[] = [];
+  const fused = reciprocalRankFusion([keyword.map(keyOf), vectors.map(keyOf)], opts.k ?? RRF_K);
+  const out: ScopedHit[] = [];
   for (const f of fused.slice(0, opts.limit)) {
-    const hit = byPath.get(f.id);
+    const hit = byKey.get(f.id);
     if (hit) out.push({ ...hit, score: Math.round(f.score * 1e6) / 1e6 });
   }
   return out;

@@ -6,9 +6,19 @@ import {
   sha256Hex,
   truncateToTokens,
 } from '@second-brain/core';
-import { applyChanges, getBacklinks, getNote, getOutgoingLinks, safeJson } from '@second-brain/db';
+import {
+  applyChanges,
+  getBacklinks,
+  getNote,
+  getOutgoingLinks,
+  type NoteRow,
+  safeJson,
+  visiblePaths,
+} from '@second-brain/db';
 import type { ImportResponse, NoteDetail, NoteType, ReadOutput } from '@second-brain/schema';
-import type { Principal } from '../auth/principal';
+import { type Principal, spaceFor } from '../auth/principal';
+import { authorize, readScope, withSource } from '../authz';
+import { authorizeChanges } from '../authz/writes';
 import type { Env } from '../env';
 import { badRequest, conflict, HttpError, notFound } from '../lib/http';
 import { scheduleEmbedding } from '../search/semantic';
@@ -33,6 +43,8 @@ export function commitMeta(
     'Second-Brain-Client': p.client ?? (p.via === 'session' ? 'web' : 'unknown'),
     ...(p.machine ? { 'Second-Brain-Machine': p.machine } : {}),
     ...(p.keyPrefix ? { 'Second-Brain-Key': p.keyPrefix } : {}),
+    // Who wrote this, so history in shared spaces shows each collaborator (sharing §5).
+    'Second-Brain-Actor': `user:${p.userId}${p.keyId ? ` key:${p.keyId}` : ''}`,
     ...extra,
   };
   const body = Object.entries(trailers)
@@ -113,19 +125,33 @@ function resolvePath(input: string, forWrite = false): string {
   }
 }
 
+/**
+ * Finds a note the caller may read: in `spaceId` when given (e.g. from a search hit's
+ * `source.space`), else in their default space first, then anywhere in their read scope.
+ */
+async function findNote(
+  env: Env,
+  p: Principal,
+  path: string,
+  spaceId: string | undefined,
+): Promise<NoteRow | null> {
+  if (spaceId) return getNote(env.DB, readScope(p, { spaceId: spaceFor(p, spaceId).id }), path);
+  return (
+    (await getNote(env.DB, readScope(p, { spaceId: p.defaultSpace.id }), path)) ??
+    (await getNote(env.DB, readScope(p), path))
+  );
+}
+
 export async function readNoteForAgent(
   env: Env,
   p: Principal,
   path: string,
   section: string | undefined,
   maxTokens: number,
-): Promise<ReadOutput> {
+  spaceId?: string,
+): Promise<ReadOutput & { space_id: string }> {
   const clean = resolvePath(path);
-  const row = await getNote(
-    env.DB,
-    p.spaces.map((s) => s.id),
-    clean,
-  );
+  const row = await findNote(env, p, clean, spaceId);
   if (!row) throw notFound(`No note at ${clean}. Use brain_search to find notes.`);
   if (p.project && row.project_slug && row.project_slug !== p.project)
     throw notFound(`No note at ${clean}.`);
@@ -136,8 +162,14 @@ export async function readNoteForAgent(
     content = s;
   }
   const t = truncateToTokens(content, maxTokens);
-  const backlinks = await getBacklinks(env.DB, row.space_id, row.path);
-  return {
+  const backlinks = await getBacklinks(
+    env.DB,
+    row.space_id,
+    row.path,
+    readScope(p, { spaceId: row.space_id }),
+  );
+  return withSource(p, row.space_id, {
+    space_id: row.space_id,
     path: row.path,
     title: row.title,
     type: row.type,
@@ -148,22 +180,31 @@ export async function readNoteForAgent(
     truncated: t.truncated,
     version: row.content_hash,
     backlinks: backlinks.map((b) => b.path),
-  };
+  });
 }
 
-export async function noteDetail(env: Env, p: Principal, path: string): Promise<NoteDetail> {
+export async function noteDetail(
+  env: Env,
+  p: Principal,
+  path: string,
+  spaceId?: string,
+): Promise<NoteDetail> {
   const clean = resolvePath(path);
-  const row = await getNote(
-    env.DB,
-    p.spaces.map((s) => s.id),
-    clean,
-  );
+  const row = await findNote(env, p, clean, spaceId);
   if (!row) throw notFound(`No note at ${clean}.`);
-  const [links, backlinks] = await Promise.all([
+  const scope = readScope(p, { spaceId: row.space_id });
+  const [outgoing, backlinks] = await Promise.all([
     getOutgoingLinks(env.DB, row.id),
-    getBacklinks(env.DB, row.space_id, row.path),
+    getBacklinks(env.DB, row.space_id, row.path, scope),
   ]);
-  return {
+  // With project-level access, links into other projects stay unresolved (no path leak).
+  let links = outgoing;
+  if (!scope.includes(row.space_id)) {
+    const targets = outgoing.flatMap((l) => (l.path ? [l.path] : []));
+    const visible = await visiblePaths(env.DB, scope, row.space_id, targets);
+    links = outgoing.map((l) => (l.path && !visible.has(l.path) ? { ...l, path: null } : l));
+  }
+  return withSource(p, row.space_id, {
     path: row.path,
     title: row.title,
     type: row.type as NoteType,
@@ -176,7 +217,7 @@ export async function noteDetail(env: Env, p: Principal, path: string): Promise<
     version: row.content_hash,
     links,
     backlinks,
-  };
+  });
 }
 
 /**
@@ -205,6 +246,7 @@ export async function writeNote(
   const version = await sha256Hex(content);
 
   const { sha } = await commitWithRetry(env, space, async (vault) => {
+    await authorizeChanges(env, p, space.id, [{ path, content }]);
     const current = await vault.read(path);
     if (input.baseVersion !== undefined) {
       const currentVersion = current ? await sha256Hex(current.content) : null;
@@ -245,6 +287,7 @@ export async function importFiles(
   files: { path: string; content: string }[],
   message?: string,
 ): Promise<ImportResponse> {
+  authorize(p, 'vault.import', { spaceId: space.id });
   const skipped: ImportResponse['skipped'] = [];
   const accepted = new Map<string, string>();
   for (const f of files) {

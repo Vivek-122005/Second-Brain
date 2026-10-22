@@ -2,11 +2,13 @@ import { applyChanges, noteId, rebuildIndex } from '@second-brain/db';
 import type { SearchHit } from '@second-brain/schema';
 import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
+import { createSession } from '../src/auth/sessions';
 import { workersAiEmbedder } from '../src/search/embedder';
 import {
   bestVectorHitPerNote,
   fuseHits,
   MIN_SIMILARITY,
+  type ScopedHit,
   type VectorHit,
 } from '../src/search/fusion';
 import { withExecutionContext } from '../src/lib/defer';
@@ -20,7 +22,8 @@ import { vectorFilter, vectorizeIndex } from '../src/search/vectors';
 import { callWith, FakeAi, FakeVectorize, semanticEnv } from './fakes';
 import { env, mcp, newUserWithKey } from './helpers';
 
-const hit = (path: string, score = 1): SearchHit => ({
+const hit = (path: string, score = 1): ScopedHit => ({
+  space_id: 's1',
   path,
   title: path,
   type: 'topic',
@@ -29,6 +32,7 @@ const hit = (path: string, score = 1): SearchHit => ({
   score,
 });
 const vhit = (path: string, score: number, heading = ''): VectorHit => ({
+  space_id: 's1',
   path,
   title: path,
   type: 'topic',
@@ -58,8 +62,21 @@ async function setup(
   const spaceId = me.default_space_id;
   const api = (path: string, init: RequestInit = {}) =>
     callWith(e, path, { ...init, headers: { ...auth, ...(init.headers ?? {}) } });
+  // Web session: space settings and sharing are people-only (agents: false in the matrix).
+  const session = await createSession(env.DB, u.user.id);
+  const cookie = `sb_session=${session.token}`;
+  const web = (path: string, init: RequestInit = {}) =>
+    callWith(e, path, {
+      ...init,
+      headers: {
+        cookie,
+        origin: 'http://app.test',
+        'content-type': 'application/json',
+        ...(init.headers ?? {}),
+      },
+    });
   if (opts.semantic) {
-    const r = await api(`/api/v1/spaces/${spaceId}`, {
+    const r = await web(`/api/v1/spaces/${spaceId}`, {
       method: 'PATCH',
       body: JSON.stringify({ semantic_enabled: true }),
     });
@@ -81,7 +98,7 @@ async function setup(
       semantic: string;
     };
   // Tests that pass null bindings never touch the fakes; the casts keep the common case terse.
-  return { ai: ai as FakeAi, vec: vec as FakeVectorize, e, u, spaceId, api, put, search };
+  return { ai: ai as FakeAi, vec: vec as FakeVectorize, e, u, spaceId, api, web, put, search };
 }
 
 const AUTH_NOTE = `---\ntype: topic\ntitle: Authentication\n---\n\n# Authentication\n\n## Passkeys\n\nUsers authenticate with passkeys; the password fallback was removed.\n`;
@@ -172,7 +189,7 @@ describe('embedding pipeline', () => {
     expect(s.ai.calls).toBe(0);
     expect(s.vec.vectors.size).toBe(0);
 
-    const r = await s.api(`/api/v1/spaces/${s.spaceId}`, {
+    const r = await s.web(`/api/v1/spaces/${s.spaceId}`, {
       method: 'PATCH',
       body: JSON.stringify({ semantic_enabled: true }),
     });
@@ -396,6 +413,64 @@ describe('hybrid search', () => {
     expect((await b.search('login password')).hits[0]?.path).toBe('topics/secret-auth.md');
   });
 
+  it('a project-limited grantee gets no other-project hits through vectors', async () => {
+    // The index ignores every filter, so only the D1 re-check (IN_SCOPE) stands in the way.
+    const vec = new FakeVectorize({ ignoreFilters: true });
+    const a = await setup({ semantic: true, vec });
+    const b = await setup({ vec, ai: a.ai });
+    const proj = (title: string, body: string) =>
+      `---\ntype: project\ntitle: ${title}\n---\n\n# ${title}\n\n${body}\n`;
+    await a.put('projects/alpha.md', proj('Alpha', 'Passkeys replace the password for sign in.'));
+    await a.put('projects/beta.md', proj('Beta', 'Secret: authentication keys rotate weekly.'));
+    await a.put('topics/general.md', '# General\n\nAuthentication and passkeys overview.\n');
+    const alphaId = await noteId(a.spaceId, 'projects/alpha.md');
+    const betaId = await noteId(a.spaceId, 'projects/beta.md');
+    expect(vec.idsFor(alphaId).length).toBeGreaterThan(0);
+    expect(vec.idsFor(betaId).length).toBeGreaterThan(0);
+
+    // A shares only the project "alpha" with B; B lets it into agent context.
+    const created = await a.web('/api/v1/grants', {
+      method: 'POST',
+      body: JSON.stringify({
+        space_id: a.spaceId,
+        email: b.u.user.email,
+        role: 'viewer',
+        project: 'alpha',
+      }),
+    });
+    expect(created.status).toBe(201);
+    const grant = (await created.json()) as { id: string };
+    const accepted = await b.web(`/api/v1/grants/${grant.id}/accept`, {
+      method: 'POST',
+      body: JSON.stringify({ include_in_agent_context: true }),
+    });
+    expect(accepted.status).toBe(200);
+
+    // "login" never appears in A's notes: every hit below comes through the vector leg.
+    for (const extra of ['', `&space_id=${a.spaceId}`, '&mode=hybrid']) {
+      const r = await b.search('login', extra);
+      expect(r.semantic).toBe('used');
+      const fromA = r.hits.filter((h) => h.source?.space === a.spaceId);
+      expect(fromA.map((h) => h.path)).toEqual(['projects/alpha.md']);
+      expect(r.hits.map((h) => h.path)).not.toContain('projects/beta.md');
+      expect(r.hits.map((h) => h.path)).not.toContain('topics/general.md');
+    }
+    // Asking for the other project explicitly yields nothing from it either.
+    const beta = await b.search('login', '&project=beta');
+    expect(beta.hits.filter((h) => h.source?.space === a.spaceId)).toEqual([]);
+    // The web session sees the same grant-limited view.
+    const web = (await (await b.web('/api/v1/search?q=login')).json()) as { hits: SearchHit[] };
+    expect(web.hits.filter((h) => h.source?.space === a.spaceId).map((h) => h.path)).toEqual([
+      'projects/alpha.md',
+    ]);
+    // The owner still sees everything, without a source tag.
+    const own = await a.search('login');
+    expect(own.hits.map((h) => h.path)).toEqual(
+      expect.arrayContaining(['projects/alpha.md', 'projects/beta.md', 'topics/general.md']),
+    );
+    expect(own.hits.every((h) => h.source === undefined)).toBe(true);
+  });
+
   it('applies project scope and type filters to vector hits', async () => {
     const s = await setup({ semantic: true });
     await s.put(
@@ -435,27 +510,27 @@ describe('PATCH /api/v1/spaces/:id', () => {
     expect(s.vec.vectors.size).toBeGreaterThan(0);
 
     const other = await setup();
-    const forbidden = await other.api(`/api/v1/spaces/${s.spaceId}`, {
+    const forbidden = await other.web(`/api/v1/spaces/${s.spaceId}`, {
       method: 'PATCH',
       body: JSON.stringify({ semantic_enabled: false }),
     });
     expect(forbidden.status).toBe(404);
 
-    const bad = await s.api(`/api/v1/spaces/${s.spaceId}`, {
+    const bad = await s.web(`/api/v1/spaces/${s.spaceId}`, {
       method: 'PATCH',
       body: JSON.stringify({ semantic_enabled: 'no' }),
     });
     expect(bad.status).toBe(400);
 
-    const readOnly = await newUserWithKey({ scopes: ['read'] });
-    const ro = await callWith(s.e, `/api/v1/spaces/${s.spaceId}`, {
+    // Agents (API keys, even the owner's own) cannot switch it: it sends notes to a model.
+    const viaKey = await s.api(`/api/v1/spaces/${s.spaceId}`, {
       method: 'PATCH',
-      headers: { authorization: `Bearer ${readOnly.secret}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ semantic_enabled: true }),
+      body: JSON.stringify({ semantic_enabled: false }),
     });
-    expect(ro.status).toBe(403);
+    expect(viaKey.status).toBe(403);
+    expect(s.vec.vectors.size).toBeGreaterThan(0);
 
-    const off = await s.api(`/api/v1/spaces/${s.spaceId}`, {
+    const off = await s.web(`/api/v1/spaces/${s.spaceId}`, {
       method: 'PATCH',
       body: JSON.stringify({ semantic_enabled: false }),
     });

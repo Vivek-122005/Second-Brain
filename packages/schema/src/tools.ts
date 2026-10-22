@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { NoteType, ProjectStatus } from './notes';
+import type { SourceRef } from './sharing';
 
 /**
  * MCP tool inputs and outputs (LLD §3). Inputs are validated at the edge;
@@ -12,11 +13,15 @@ const projectSlug = z
 
 const vaultPath = z.string().min(1).max(300);
 
+/** Targets one space (your own or one shared with you). Omitted = your default space. */
+const spaceId = z.string().min(1).max(64);
+
 // ── brain_context ──────────────────────────────────────────────────────────
 export const ContextInput = z.object({
   project: projectSlug.optional(),
   budget_tokens: z.number().int().min(500).max(32000).default(4000),
   include_shared: z.boolean().default(true),
+  space_id: spaceId.optional(),
 });
 export type ContextInput = z.infer<typeof ContextInput>;
 
@@ -27,6 +32,7 @@ export interface ContextProject {
   goal?: string;
   next: string[];
   body?: string;
+  source?: SourceRef;
 }
 export interface ContextDecision {
   id: string;
@@ -34,6 +40,7 @@ export interface ContextDecision {
   date: string;
   rationale: string;
   project?: string;
+  source?: SourceRef;
 }
 export interface ContextSession {
   id: string;
@@ -41,11 +48,13 @@ export interface ContextSession {
   summary: string;
   next: string[];
   path: string;
+  source?: SourceRef;
 }
 export interface ContextActiveProject {
   slug: string;
   title: string;
   next?: string;
+  source?: SourceRef;
 }
 export interface ContextOutput {
   project: ContextProject | null;
@@ -94,6 +103,8 @@ export const SaveInput = z.object({
     .optional(),
   agent: z.string().max(60).optional(),
   machine: z.string().max(60).optional(),
+  /** Defaults to the space brain_context opened the session in. */
+  space_id: spaceId.optional(),
 });
 export type SaveInput = z.infer<typeof SaveInput>;
 
@@ -119,6 +130,8 @@ export const SearchInput = z.object({
    * server picks `hybrid` if semantic search is enabled for a searched space, else `keyword`.
    */
   mode: SearchMode.optional(),
+  /** Search one space only. Omitted = every space in your context. */
+  space_id: spaceId.optional(),
 });
 export type SearchInput = z.infer<typeof SearchInput>;
 
@@ -136,6 +149,8 @@ export interface SearchHit {
   heading: string;
   snippet: string;
   score: number;
+  /** Present when the hit is in a space shared with you. */
+  source?: SourceRef;
 }
 
 // ── brain_read ─────────────────────────────────────────────────────────────
@@ -143,6 +158,8 @@ export const ReadInput = z.object({
   path: vaultPath,
   section: z.string().max(200).optional(),
   max_tokens: z.number().int().min(100).max(32000).default(2000),
+  /** From a search hit's `source.space`. Omitted = your own spaces first. */
+  space_id: spaceId.optional(),
 });
 export type ReadInput = z.infer<typeof ReadInput>;
 
@@ -155,6 +172,7 @@ export interface ReadOutput {
   truncated: boolean;
   version: string | null;
   backlinks: string[];
+  source?: SourceRef;
 }
 
 // ── brain_write ────────────────────────────────────────────────────────────
@@ -163,6 +181,7 @@ export const WriteInput = z.object({
   content: z.string().max(200000),
   base_version: z.string().optional(),
   message: z.string().max(200).optional(),
+  space_id: spaceId.optional(),
 });
 export type WriteInput = z.infer<typeof WriteInput>;
 
@@ -184,6 +203,7 @@ export interface ProjectSummary {
   status: string;
   next?: string;
   updated?: string;
+  source?: SourceRef;
 }
 
 // ── brain_check ────────────────────────────────────────────────────────────

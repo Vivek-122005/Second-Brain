@@ -159,7 +159,7 @@ WHERE chunks_fts MATCH ?q AND c.space_id IN (/*readable set*/) AND (/*project sc
 ORDER BY s LIMIT limit*4
 → dedupe best chunk per note → if hybrid: RRF( fts_ranks, vector_ranks , k=60 ) → top limit
 ```
-The vector query uses the same `space_id` metadata filter in Vectorize (plus `project` and `type`). Results below `min_similarity=0.35` are dropped before fusion, and the remaining chunk ids are re-checked in D1 with the caller's readable spaces before fusion, so the vector index is never the permission boundary. `mode` defaults to `hybrid` when a searched space has `semantic_enabled`; responses carry `semantic: used | disabled | unavailable`, and any AI/Vectorize error degrades to keyword (`unavailable`). Code: `apps/server/src/search/` (`embedder.ts`, `vectors.ts`, `semantic.ts`, `fusion.ts`, `service.ts`).
+The vector query uses the same `space_id` metadata filter in Vectorize (plus `project` and `type`). Results below `min_similarity=0.35` are dropped before fusion, and the remaining chunk ids are re-checked in D1 with the caller's read scope (`readScope` tokens, the same `IN_SCOPE` predicate as keyword search, so a project-level grant only matches that project) before fusion. The vector index is never the permission boundary. Hits from shared spaces carry `source`. `mode` defaults to `hybrid` when a searched space has `semantic_enabled`; responses carry `semantic: used | disabled | unavailable`, and any AI/Vectorize error degrades to keyword (`unavailable`). Code: `apps/server/src/search/` (`embedder.ts`, `vectors.ts`, `semantic.ts`, `fusion.ts`, `service.ts`).
 
 ### 4.3 Token budgeter
 Estimate tokens at chars/4 (calibrated per model family). Fill the response in priority order: project header, `next`, latest 5 decisions, latest 3 sessions, active projects. When over budget, drop the oldest session first, then the oldest decision, then truncate the project body tail. Set `_meta.truncated=true`.
@@ -208,3 +208,59 @@ brain status | brain logout | brain keys rotate
 ```
 
 The activity spooler writes JSONL to `~/.second-brain/spool/`. It redacts on write, a background flush sends batches of up to 100 events or every 10 s, retries use exponential backoff, and the spool is capped at 50 MB.
+
+## 8. OAuth 2.1 for MCP clients
+
+MCP clients (Claude Desktop and claude.ai connectors, Claude Code, Cursor, VS Code) connect with just `https://<host>/mcp`. The Worker is both the **authorization server** (issuer = its origin) and the **protected resource** (`<origin>/mcp`), following the MCP authorization spec, as decided in ADR-0005 and ADR-0007. Code: `apps/server/src/oauth/**`. Tables: migration `0004_oauth.sql`.
+
+### 8.1 Endpoints
+
+| Endpoint | Spec | Notes |
+|---|---|---|
+| `GET /.well-known/oauth-protected-resource` and `…/mcp` | RFC 9728 | `resource = <origin>/mcp`, `authorization_servers = [<origin>]`, scopes `read write` |
+| `GET /.well-known/oauth-authorization-server` | RFC 8414 | S256 only, `code` only, `authorization_code` + `refresh_token`, `iss` in authorization responses |
+| `POST /oauth/register` | RFC 7591 | Public clients (`none`) by default; `client_secret_post` and `client_secret_basic` also accepted. At most 20 registrations per IP per hour |
+| `GET` and `POST /oauth/authorize` | OAuth 2.1 §4.1, RFC 8707 | Needs a web session; server-rendered consent page; CSRF-protected POST |
+| `POST /oauth/token` | OAuth 2.1 §4.1.3, §4.3 | Code exchange with PKCE; refresh-token rotation |
+| `POST /oauth/revoke` | RFC 7009 | Always 200; revoking a refresh token revokes its family |
+| `GET /api/v1/oauth/grants`, `DELETE /api/v1/oauth/grants/:id` | REST | Connected apps in the web app; disconnecting revokes all of the client's tokens |
+
+Discovery, registration, token and revocation endpoints send `Access-Control-Allow-Origin: *`, since they never read cookies. The consent page does not.
+
+### 8.2 Flow
+
+```
+client  ─ POST /mcp (no token) ───────────▶ 401 WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp"
+client  ─ GET  protected-resource metadata ▶ authorization_servers = [<origin>]
+client  ─ GET  /.well-known/oauth-authorization-server
+client  ─ POST /oauth/register {redirect_uris, client_name} ▶ client_id (ocl_…)
+browser ─ GET  /oauth/authorize?response_type=code&client_id&redirect_uri&code_challenge&code_challenge_method=S256&state&scope&resource
+            no session → 302 /login?next=<encoded full authorize URL>   (the web app signs in, then navigates back with a full page load)
+            session    → consent page: client name, redirect host, scopes (read; write can be unticked), space
+browser ─ POST /oauth/authorize (csrf, decision, space_id, scope_write)
+            deny       → 302 redirect_uri?error=access_denied&state&iss
+            approve    → upsert grant (one active per user and client) → code (60 s) → 302 redirect_uri?code&state&iss
+client  ─ POST /oauth/token grant_type=authorization_code, code, code_verifier, client_id, redirect_uri, resource
+            → { access_token: sb_oat_… (1 h), refresh_token: sb_ort_… (30 d), scope }
+client  ─ POST /mcp   Authorization: Bearer sb_oat_…
+client  ─ POST /oauth/token grant_type=refresh_token → new access and refresh token; the old refresh token is spent
+```
+
+### 8.3 Rules
+
+- **Redirect URIs:** `https://…`; `http://localhost`, `127.0.0.1` or `[::1]` on any port (RFC 8252 §7.3: a registered loopback URI matches on any port); or the private-use schemes of known desktop clients (`cursor`, `vscode`, `vscode-insiders`, `windsurf`, `claude`), where PKCE protects the code. No fragments or credentials. An unknown client or an unregistered redirect URI gets an error page, never a redirect.
+- **PKCE:** `code_challenge_method=S256` is required. The verifier is checked before the code is consumed, so a wrong verifier does not burn the code. The code is consumed atomically (`UPDATE … WHERE used_at IS NULL`) in the same D1 batch as the token inserts, which are guarded on that update winning.
+- **Code replay:** a second exchange gets `invalid_grant` and revokes the tokens the first exchange minted.
+- **Audience (RFC 8707):** `resource` must be `<origin>/mcp` (or absent, which means the same). Tokens store their audience and are only accepted on `/mcp`; the REST API rejects them.
+- **Tokens:** opaque 256-bit random values with recognisable prefixes, stored only as SHA-256 hashes. A **family** is one code exchange and every refresh after it. Refresh tokens rotate on every use. Presenting a spent one, or losing a concurrent rotation race, is treated as theft and revokes the whole family. A refresh may narrow scopes but never widen them.
+- **Principal:** `identify` routes `Bearer sb_oat_…` to `principalFromAccessToken`. It yields `via: 'oauth'`, the token's scopes narrowed by the grant, `client` = the registered client name, `keyId` = the grant id (so commits, audit rows and agent sessions are attributed to the connected app), and only the space chosen at consent.
+- **Consent CSRF:** the form carries `<ts>.<HMAC(pepper, session hash, ts)>`, valid for 15 minutes, and posts with a foreign `Origin` or `Sec-Fetch-Site` are refused. The page has a strict CSP (`default-src 'none'`, `frame-ancestors 'none'`) and escapes every client-supplied value.
+- **Audit:** `oauth.consent`, `oauth.consent.deny`, `oauth.token.issue`, `oauth.token.refresh`, `oauth.token.revoke`, `oauth.code.reuse`, `oauth.refresh.reuse`, `oauth.grant.revoke`.
+- **Cleanup:** the nightly Cron deletes codes and tokens that expired more than a day ago.
+
+### 8.4 Tables (`0004_oauth.sql`)
+
+- `oauth_clients`: the registration, plus an HMAC of the registering IP for the hourly cap.
+- `oauth_grants`: consent per user and client, with the chosen space and scopes. A partial unique index keeps one active grant per pair.
+- `oauth_codes`: hashed, single use, with the PKCE challenge, redirect URI, audience and the family it minted.
+- `oauth_tokens`: hashed access and refresh tokens with `family_id`, `used_at` and `replaced_by` for rotation, and `revoked_at`.
