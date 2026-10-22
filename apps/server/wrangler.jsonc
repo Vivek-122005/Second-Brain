@@ -67,11 +67,11 @@
       "vars": {
         "ENVIRONMENT": "staging",
         "SIGNUP_MODE": "allowlist",
-        "ALLOWED_EMAILS": "",
-        "APP_ORIGINS": "",
+        "ALLOWED_EMAILS": "vivekind1201@gmail.com,vivek.23csai@nst.rishihood.edu.in",
+        "APP_ORIGINS": "https://second-brain-staging.second-brain-server.workers.dev",
         "EMAIL_FROM": "Second Brain <login@example.com>",
         // Required for passkeys outside development: the site's host, e.g. "brain.example.com".
-        "WEBAUTHN_RP_ID": "",
+        "WEBAUTHN_RP_ID": "second-brain-staging.second-brain-server.workers.dev",
         "WEBAUTHN_RP_NAME": "Second Brain",
       },
       "ratelimits": [
@@ -90,7 +90,7 @@
         {
           "binding": "DB",
           "database_name": "second-brain-staging",
-          "database_id": "00000000-0000-0000-0000-000000000000",
+          "database_id": "2f0768db-0035-4d0e-9f87-37d875dab276",
           "migrations_dir": "../../packages/db/migrations",
         },
       ],
@@ -101,11 +101,11 @@
       "vars": {
         "ENVIRONMENT": "production",
         "SIGNUP_MODE": "allowlist",
-        "ALLOWED_EMAILS": "",
-        "APP_ORIGINS": "",
+        "ALLOWED_EMAILS": "vivekind1201@gmail.com,vivek.23csai@nst.rishihood.edu.in",
+        "APP_ORIGINS": "https://second-brain-production.second-brain-server.workers.dev",
         "EMAIL_FROM": "Second Brain <login@example.com>",
         // Required for passkeys outside development: the site's host, e.g. "brain.example.com".
-        "WEBAUTHN_RP_ID": "",
+        "WEBAUTHN_RP_ID": "second-brain-production.second-brain-server.workers.dev",
         "WEBAUTHN_RP_NAME": "Second Brain",
       },
       "ratelimits": [
@@ -124,7 +124,7 @@
         {
           "binding": "DB",
           "database_name": "second-brain-production",
-          "database_id": "00000000-0000-0000-0000-000000000000",
+          "database_id": "eb93086f-a77b-43b7-80c3-4d592eaaa93e",
           "migrations_dir": "../../packages/db/migrations",
         },
       ],
