@@ -5,7 +5,9 @@ import { useApi } from '../api/context';
 import type { SpaceSummary } from '../api/contract';
 import { useMe } from '../api/queries';
 import { Page } from '../components/layout/Pane';
+import { ConnectedAppsSection } from '../components/ConnectedAppsSection';
 import { SecuritySection } from '../components/SecuritySection';
+import { VaultSection } from '../components/VaultSection';
 import { Button } from '../components/ui/Button';
 import { ErrorState, Pill, Skeleton } from '../components/ui/Feedback';
 import { errorMessage } from '../lib/errors';
@@ -92,7 +94,22 @@ export function SettingsPage() {
         </>
       )}
 
+      {/* Only the owner can see or change where a space's notes live. */}
+      {me.isSuccess
+        ? me.data.spaces
+            .filter((s) => s.role === 'owner')
+            .map((s, _i, owned) => (
+              <VaultSection
+                key={s.id}
+                space={s}
+                title={owned.length > 1 ? `Vault · ${s.name}` : 'Vault'}
+              />
+            ))
+        : null}
+
       {me.isSuccess ? <SecuritySection /> : null}
+
+      {me.isSuccess ? <ConnectedAppsSection spaces={me.data.spaces} /> : null}
 
       <GroupedSection
         title="Appearance"
