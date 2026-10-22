@@ -9,8 +9,11 @@ import { apiRateLimit, authRateLimit, pruneRateLimits } from './lib/ratelimit';
 import { handleMcp } from './mcp/server';
 import { apiRoutes } from './routes/api';
 import { authRoutes } from './routes/auth';
+import { vaultRoutes } from './routes/vault';
 import type { SpaceRow } from './services/spaces';
 import { vaultFor } from './vault';
+import { driftCheck } from './vault/sync';
+import { githubWebhooks } from './webhooks/github';
 
 export const app = new Hono<AppEnv>();
 
@@ -30,8 +33,13 @@ app.use('/mcp', identify);
 app.use('/api/v1/auth/*', authRateLimit);
 app.use('/api/*', apiRateLimit);
 app.use('/mcp', apiRateLimit);
+// Reads of a GitHub space trigger a cheap catch-up when its last sync check is stale.
+app.use('/api/*', driftCheck);
+app.use('/mcp', driftCheck);
 app.route('/api/v1/auth', authRoutes);
 app.route('/api/v1', apiRoutes);
+app.route('/api/v1', vaultRoutes);
+app.route('/webhooks/github', githubWebhooks);
 
 // MCP over Streamable HTTP (stateless). Requires an API key with at least the read scope.
 app.all('/mcp', async (c) => {

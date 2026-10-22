@@ -19,6 +19,8 @@ export default defineConfig(async () => {
             EMAIL_FROM: 'test@example.com',
             KEY_PEPPER: 'test-pepper',
             RATE_LIMITS: 'off',
+            // base64("0123456789abcdef0123456789abcdef"): a fixed 32-byte test-only KEK.
+            VAULT_KEK: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=',
             TEST_MIGRATIONS: migrations,
           },
         },

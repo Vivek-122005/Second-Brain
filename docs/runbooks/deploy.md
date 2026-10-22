@@ -1,19 +1,46 @@
 # Runbook: deploy
 
-How to deploy the Second Brain Worker (`apps/server`) to Cloudflare, and the configuration each environment needs. For running it locally, see [local development](local-dev.md).
+Second Brain runs as one Cloudflare Worker per environment (`second-brain-staging`, `second-brain-production`), each with its own D1 database. GitHub Actions deploys it: every merge to `main` goes to **staging**, and every tag `vX.Y.Z` goes to **production** (`.github/workflows/deploy.yml`). Migrations in `packages/db/migrations` run before each deploy.
 
-## Environments
+## One-time setup (owner)
 
-`apps/server/wrangler.jsonc` defines three: the top level (local development), `staging` and `production`. Bindings such as D1 and rate limiters are not inherited by environments, so each one lists its own.
+1. **Cloudflare account**: sign in at dash.cloudflare.com. The Workers free plan is enough to start; Workers Paid ($5/month) raises D1 and CPU limits.
+2. **Create the databases** (from `apps/server`, after `pnpm exec wrangler login`):
+
+   ```bash
+   pnpm exec wrangler d1 create second-brain-staging
+   pnpm exec wrangler d1 create second-brain-production
+   ```
+
+   Put each printed `database_id` into `apps/server/wrangler.jsonc` under `env.staging` and `env.production`, and commit that change.
+3. **Set Worker secrets** for each environment (`--env staging`, then `--env production`):
+
+   ```bash
+   openssl rand -base64 32 | pnpm exec wrangler secret put KEY_PEPPER --env staging
+   openssl rand -base64 32 | pnpm exec wrangler secret put VAULT_KEK --env staging
+   pnpm exec wrangler secret put RESEND_API_KEY --env staging   # for sign-in emails
+   pnpm exec wrangler secret put GOOGLE_CLIENT_ID --env staging      # optional: Google sign-in
+   pnpm exec wrangler secret put GOOGLE_CLIENT_SECRET --env staging  # (see below)
+   ```
+
+   Never reuse a pepper between environments, and never rotate `KEY_PEPPER` casually: it invalidates every API key.
+4. **Allow your email** by setting `ALLOWED_EMAILS` (and `APP_ORIGINS`, your site's origin) in `wrangler.jsonc` for each environment. Set `EMAIL_FROM` to a sender on a domain verified in Resend, and `WEBAUTHN_RP_ID` to the site's host so passkeys work (see [Passkeys](#passkeys-webauthn)).
+5. **GitHub environments**: in the repository settings, create the environments `staging` and `production`. Add secrets `CLOUDFLARE_API_TOKEN` (a token with *Workers Scripts: Edit*, *D1: Edit* and *Account Settings: Read*) and `CLOUDFLARE_ACCOUNT_ID` to each, and a variable `APP_URL` (e.g. `https://second-brain-staging.<you>.workers.dev`) for the smoke test. Add yourself as a required reviewer on `production`.
+
+Until step 5 is done, the Deploy workflow skips with a notice instead of failing.
+
+## Releasing to production
 
 ```bash
-pnpm --filter @second-brain/server exec wrangler d1 migrations apply DB --env production --remote
-pnpm --filter @second-brain/server exec wrangler deploy --env production
+git switch main && git pull
+git tag v0.1.0 && git push origin v0.1.0
 ```
 
-Apply migrations before deploying code that needs them. Migrations are forward-only and backward-compatible, so the old code keeps working against the new schema.
+Approve the `production` deployment in the Actions tab. Roll back with `pnpm exec wrangler rollback --env production` (Worker code only; migrations are forward-only and backward-compatible by rule).
 
-## Variables (`vars` in wrangler.jsonc)
+## Configuration reference
+
+### Variables (`vars` in wrangler.jsonc)
 
 | Variable | Example | Notes |
 |---|---|---|
@@ -25,7 +52,7 @@ Apply migrations before deploying code that needs them. Migrations are forward-o
 | `WEBAUTHN_RP_ID` | `brain.example.com` | **Required for passkeys outside development.** The host the app is served on, or a parent domain of it. Changing it later invalidates every registered passkey |
 | `WEBAUTHN_RP_NAME` | `Second Brain` | Shown by the authenticator when a passkey is created |
 
-## Secrets (`wrangler secret put <NAME> --env <env>`)
+### Secrets (`wrangler secret put <NAME> --env <env>`)
 
 | Secret | Required | Notes |
 |---|---|---|
