@@ -27,15 +27,113 @@ export interface Page<T> {
 
 // ── Auth ───────────────────────────────────────────────────────────────────
 /** POST /api/v1/auth/magic-link → 202 `MagicLinkResponse` */
-export const MagicLinkRequest = z.object({ email: z.email().max(254) });
+export const MagicLinkRequest = z.object({
+  email: z.email().max(254),
+  /**
+   * Where to land after the link is opened: a same-origin relative path (`/device?code=…`) or an
+   * absolute URL on this server's origin. Anything else is ignored and the link lands on `/`.
+   */
+  next: z.string().max(1024).optional(),
+});
 export type MagicLinkRequest = z.infer<typeof MagicLinkRequest>;
 export interface MagicLinkResponse {
   sent: true;
   /** Only in local development (no email provider): the link to open. */
   dev_link?: string;
 }
-/** GET /api/v1/auth/verify?token=… → sets the session cookie and redirects to `/`. */
+/** GET /api/v1/auth/verify?token=… → sets the session cookie and redirects to `next` (or `/`). */
 /** POST /api/v1/auth/logout → 204 */
+
+/** GET /api/v1/auth/providers (no auth): which sign-in methods this server offers. */
+export interface AuthProvidersResponse {
+  passkey: boolean;
+  /** True when GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are configured. */
+  google: boolean;
+  /** True when sign-in emails can be delivered (or in local development). */
+  magic_link: boolean;
+}
+
+// ── Passkeys (WebAuthn) ────────────────────────────────────────────────────
+// The options endpoints return SimpleWebAuthn's `PublicKeyCredentialCreationOptionsJSON` /
+// `PublicKeyCredentialRequestOptionsJSON` as-is (pass them to `startRegistration` /
+// `startAuthentication` from `@simplewebauthn/browser`). The verify endpoints take the browser
+// library's response JSON. Challenges are single-use and expire after 5 minutes.
+
+/**
+ * POST /api/v1/auth/passkey/register/options → 200 creation options JSON.
+ * Signed in (session cookie): adds a passkey to the current account; the body may be empty.
+ * Not signed in: signs up a NEW account; `email` is required and must pass the server's signup
+ * policy. 409 if an account with that email already exists (sign in, then add a passkey).
+ */
+export const PasskeyRegisterOptionsRequest = z.object({
+  email: z.email().max(254).optional(),
+  /** Friendly name for the passkey, e.g. "MacBook Pro". */
+  name: z.string().trim().min(1).max(80).optional(),
+});
+export type PasskeyRegisterOptionsRequest = z.infer<typeof PasskeyRegisterOptionsRequest>;
+
+/** POST /api/v1/auth/passkey/login/options (no auth) → 200 request options JSON (discoverable credentials, no allow-list). */
+export const PasskeyLoginOptionsRequest = z.object({
+  /** Optional and only used for rate limiting; sign-in is "usernameless". */
+  email: z.email().max(254).optional(),
+});
+export type PasskeyLoginOptionsRequest = z.infer<typeof PasskeyLoginOptionsRequest>;
+
+/** The credential JSON produced by `startRegistration` / `startAuthentication`. */
+const WebAuthnCredentialJSON = z.looseObject({
+  id: z.string().min(1).max(1400),
+  rawId: z.string().min(1).max(1400),
+  type: z.literal('public-key'),
+  response: z.looseObject({ clientDataJSON: z.string().min(1).max(10_000) }),
+  clientExtensionResults: z.looseObject({}).default({}),
+  authenticatorAttachment: z.string().optional(),
+});
+
+/**
+ * POST /api/v1/auth/passkey/register/verify and POST /api/v1/auth/passkey/login/verify
+ * → 200 `PasskeyVerifyResponse`. A successful login, or a new-account registration, sets the
+ * session cookie. Failures are problem+json (400 invalid/expired, 401 unknown or rejected
+ * passkey, 403 not allowed to sign in) with `verified: false`.
+ */
+export const PasskeyVerifyRequest = z.object({
+  response: WebAuthnCredentialJSON,
+  /** Registration only: name for the new passkey (overrides the one sent with the options). */
+  name: z.string().trim().min(1).max(80).optional(),
+});
+export type PasskeyVerifyRequest = z.infer<typeof PasskeyVerifyRequest>;
+export interface PasskeyVerifyResponse {
+  verified: boolean;
+  /** Registration only: the stored passkey. */
+  passkey?: Passkey;
+}
+
+/** GET /api/v1/auth/passkeys (session auth) → `Page<Passkey>` */
+export interface Passkey {
+  id: string;
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
+  /** Authenticator transports, e.g. `["internal", "hybrid"]`. */
+  transports: string[];
+  /** `multiDevice` passkeys are synced (iCloud Keychain, Google Password Manager…). */
+  device_type: 'singleDevice' | 'multiDevice';
+  backed_up: boolean;
+}
+/**
+ * PATCH /api/v1/auth/passkeys/:id (session auth) → 200 `Passkey`
+ * DELETE /api/v1/auth/passkeys/:id (session auth) → 204, or 409 if it is the account's last
+ * sign-in method.
+ */
+export const RenamePasskeyRequest = z.object({ name: z.string().trim().min(1).max(80) });
+export type RenamePasskeyRequest = z.infer<typeof RenamePasskeyRequest>;
+
+/**
+ * GET /api/v1/auth/google/start?redirect=/some/path → 302 to Google (404 when Google sign-in is
+ * not configured). `redirect` must be a same-origin relative path (or an absolute URL on this
+ * origin); anything else becomes `/`.
+ * GET /api/v1/auth/google/callback → sets the session cookie and 302s to that path, or to
+ * `/?signin=failed|not_allowed|cancelled` on failure.
+ */
 
 export interface User {
   id: string;
