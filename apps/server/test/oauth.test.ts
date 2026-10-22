@@ -55,10 +55,13 @@ function authorizeQuery(clientId: string, challenge: string, extra: Record<strin
   });
 }
 
+const UNESCAPE: Record<string, string> = { amp: '&', quot: '"', lt: '<', gt: '>', '#39': "'" };
+
+/** Reads the consent form's hidden fields, decoding entities in one pass. */
 function hiddenFields(html: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const m of html.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)) {
-    out[m[1]!] = m[2]!.replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+    out[m[1]!] = m[2]!.replace(/&(amp|quot|lt|gt|#39);/g, (_, e: string) => UNESCAPE[e] ?? '');
   }
   return out;
 }
