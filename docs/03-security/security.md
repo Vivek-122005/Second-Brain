@@ -53,6 +53,22 @@ True E2EE (server can't read notes) is **not** a v1 goal because server-side FTS
 - **OAuth 2.1 for MCP:** authorization code + PKCE, dynamic client registration, audience-bound tokens (15 min access, rotating refresh), consent screen listing the scopes.
 - **Sessions:** 7-day sliding, re-authentication for sensitive actions (create key, share admin, export, delete).
 
+### Sign-in methods
+
+Every method ends in the same opaque session cookie, and every one applies the same `SIGNUP_MODE` / `ALLOWED_EMAILS` policy, both to new accounts and to each sign-in ([ADR-0007](../adr/0007-own-authentication.md)). `GET /api/v1/auth/providers` says which are on.
+
+| Method | How it is protected |
+|---|---|
+| **Passkeys** (WebAuthn, `@simplewebauthn/server`) | Discoverable credentials with user verification required. Challenges are 32 random bytes, stored server-side, single-use (consumed atomically before verification) and valid for 5 minutes; registration challenges are bound to the account that asked for them. Origin and RP ID are checked. We own the signature-counter check: a counter that does not increase is treated as a cloned authenticator, refused and audited, and counter updates are compare-and-swap. Passkey POSTs require our own `Origin` (login CSRF) |
+| **Sign in with Google** (OIDC, in-house) | Authorization code flow with PKCE (S256), `state` and `nonce`. The flow is bound to the browser by a random HttpOnly cookie whose hash keys a single-use, 10-minute DB row. The ID token's RS256 signature is verified against Google's JWKS (from the discovery document, cached), plus `iss`, `aud`/`azp`, `exp`, `iat`, `nonce` and `email_verified`. Identities are stored as `(provider, sub)`, so a changed Google email still maps to the same account |
+| **Magic link** | Single-use, 15-minute token, stored hashed. Its `next` destination, like Google's `redirect`, must be a same-origin path or URL, so neither can be an open redirect |
+
+- **Account pre-hijacking.** Passkey sign-up creates an account for an email nobody has proven yet. The first time that email *is* proven (magic link or a verified Google email), every credential that existed before is revoked: passkeys, linked identities, sessions and API keys. A squatter who signed up first is locked out; the real owner adds their passkey again. Adding a passkey to an *existing* account always needs a signed-in session, never just the email.
+- **Last method.** A user can't delete their last passkey unless another way in remains (another passkey, a linked Google identity while Google is enabled, or magic links while they can be delivered). The check and the delete are one SQL statement.
+- **Rate limits.** `/api/v1/auth/*` is limited per IP and per email (30/min by default); `/api/v1/*` and `/mcp` per API key or user (600/min). The Workers Rate Limiting binding is used when configured, otherwise a D1 fixed-window counter keyed by hashed IPs and emails. Over the limit: `429` problem+json with `Retry-After`.
+- **Audit.** Sign-ins (`auth.signin` with the method), sign-ups, email verification, passkey register/rename/delete, counter regressions, identity links and failed Google callbacks are written to the hash-chained audit log, with IDs only.
+- **Known trade-off.** Passkey sign-up says when an email is not allowed or already has an account (it has to, to avoid leaving a useless passkey on the user's device), so it reveals more than the magic-link endpoint does. Rate limits bound the probing.
+
 ## 4. Prompt-injection & agent safety
 
 1. Envelope: `_meta.trust = "untrusted-memory"`, and content is never mixed into tool *descriptions*.

@@ -42,7 +42,7 @@ pnpm --filter @second-brain/server db:migrate:local      # create the local D1 s
 pnpm --filter @second-brain/server dev                   # http://localhost:8787
 ```
 
-1. **Sign in.** Add your email to `ALLOWED_EMAILS` in `apps/server/wrangler.jsonc` (or set `SIGNUP_MODE` to `open` for local use). Then `POST /api/v1/auth/magic-link`: in development the response contains a `dev_link` to open instead of an email. The web app's sign-in screen shows it as a button.
+1. **Sign in.** Add your email to `ALLOWED_EMAILS` in `apps/server/wrangler.jsonc` (or set `SIGNUP_MODE` to `open` for local use). Then `POST /api/v1/auth/magic-link`: in development the response contains a `dev_link` to open instead of an email. The web app's sign-in screen shows it as a button. Passkeys work on `http://localhost:8787` with no setup (the RP ID falls back to `localhost`); Google sign-in needs `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in `.dev.vars` (see [deploy](deploy.md#sign-in-with-google-oauth-client-setup)).
 2. **Create an API key** in the web app (Keys & Devices), or with the CLI: `brain login --api http://localhost:8787`.
 3. **Load the sample vault** (`fixtures/vault`):
 
