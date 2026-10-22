@@ -88,6 +88,8 @@ Queue consumer → compare commits → changed paths → fetch blobs → parse/c
               → enqueue embed{note_ids} (if semantic enabled)
 ```
 
+In v1 (ADR-0008) there is no queue. `POST /webhooks/github/:spaceId` verifies the signature, dedupes by `X-GitHub-Delivery`, answers `202`, and re-indexes the changed paths in `ctx.waitUntil`. Changed paths come from the payload's commit lists, or from the compare API when a push was missed or the list is truncated. When a GitHub space is read and its last check is more than 10 minutes old, a drift check compares the branch head with `sync_state.last_indexed_sha`. Setup and operation: [runbook](../runbooks/github-vault.md).
+
 ### 4.4 Nightly full rebuild (safety net)
 
 1. `generation = now()`.
