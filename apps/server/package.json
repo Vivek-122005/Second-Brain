@@ -25,9 +25,9 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "1.4.6",
-    "@cloudflare/workers-types": "^5.20261021.1",
+    "@cloudflare/vitest-plugin": "1.4.7",
+    "@cloudflare/workers-types": "^5.20261025.1",
     "@second-brain/config": "workspace:*",
-    "wrangler": "^4.151.3"
+    "wrangler": "^4.152.0"
   }
 }
