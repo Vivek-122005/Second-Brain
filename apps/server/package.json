@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@cfworker/json-schema": "^4.1.1",
-    "@modelcontextprotocol/sdk": "1.32.1",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@second-brain/core": "workspace:*",
     "@second-brain/db": "workspace:*",
     "@second-brain/schema": "workspace:*",
